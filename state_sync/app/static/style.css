@@ -31,9 +31,12 @@ input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); f
 label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 550; }
 .check { flex-direction: row; align-items: center; gap: 8px; padding-block: 6px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.editor-section { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; background: var(--surface); margin: 0 0 24px; padding: 20px; }
+.editor-section { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin: 0 0 24px; padding: 20px; }
+.editor-section:last-child { margin-bottom: 0; }
 .editor-section > h3 { border-bottom: 1px solid var(--line); padding-bottom: 14px; }
-details.editor-section { border-top: 1px solid var(--line); }
+.sync-type-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.sync-type-title label, .sync-type-title select { font: inherit; }
+.sync-type-title select { width: auto; max-width: 100%; }
 .editor-section > summary { font-size: 15px; font-weight: 600; }
 summary { cursor: pointer; }
 details[open] > summary { margin-bottom: 16px; }
@@ -44,6 +47,7 @@ details[open] > summary { margin-bottom: 16px; }
 .hint { font-size: 12px; margin: 10px 0 0; }
 .predicate { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; }
 .predicate:last-child { border: 0; }
+#source > .predicate { padding-bottom: 0; margin-bottom: 0; }
 .predicate .grid { margin-bottom: 8px; }
 .predicate { margin-top: 16px; }
 #times { margin-top: 14px; }

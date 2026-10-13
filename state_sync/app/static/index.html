@@ -24,8 +24,7 @@
         <p id="edit-error" class="error" role="alert" hidden></p>
         <div id="fields">
           <section class="editor-section" aria-labelledby="trigger-title">
-            <h3 id="trigger-title">Triggers <small>When to enforce</small></h3>
-            <label>Sync type<select id="type"><option value="entity">Entity state</option><option value="time">Time window</option></select></label>
+            <h3 id="trigger-title" class="sync-type-title"><label for="type">Sync Type:</label><select id="type"><option value="entity">Entity state</option><option value="time">Time window</option></select></h3>
             <div id="source"></div>
             <div id="times" class="grid" hidden><label>From<input id="start" type="time" value="21:00"></label><label>Until<input id="end" type="time" value="01:00"></label></div>
             <p id="time-hint" class="hint" hidden>Uses Home Assistant’s timezone. Can cross midnight.</p>
@@ -39,7 +38,7 @@
             <h4>Target entities</h4><div id="targets"></div>
             <div id="desired"></div>
             <label class="check alternate-toggle"><input id="inverted" type="checkbox"> Set an alternate state when the trigger doesn’t match</label>
-            <div id="alternate-box" hidden><h4>Alternate state</h4><div id="alternate"></div><p class="hint">Conditions still apply.</p></div>
+            <div id="alternate-box" hidden><h4>Alternate state</h4><div id="alternate"></div></div>
           </section>
           <details id="sync-options" class="editor-section">
             <summary>Sync settings</summary>
