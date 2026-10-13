@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>State Sync</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="theme.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><h1 id="app-title">State Sync</h1><div class="header-actions">
+      <button id="resync" class="quiet"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7a8 8 0 0 0-14-2L3 8M3 3v5h5M4 17a8 8 0 0 0 14 2l3-3M16 16h5v5"/></svg><span>Resync All</span></button>
+      <button id="new"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New Sync</span></button>
+    </div></header>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div id="overview"></div>
+  </main>
+  <dialog id="sync-details" class="status-popup" aria-labelledby="details-title">
+    <div class="details-layout">
+      <div class="details-head"><h2 id="details-title"></h2><div class="editor-controls"><button type="button" id="details-json" class="quiet" aria-pressed="false">Show JSON</button><button type="button" id="details-close" class="quiet" aria-label="Close status details" autofocus>✕</button></div></div>
+      <div id="details-body"></div>
+    </div>
+  </dialog>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="form">
+      <div class="editor-top">
+        <div class="dialog-head">
+          <h2 id="editor-title"><span id="editor-verb">New</span><input id="name" aria-label="Sync name" required maxlength="200" placeholder="Sync"></h2>
+          <div class="editor-controls"><button type="button" id="mode-toggle" class="quiet" aria-label="Switch to YAML editor">YAML</button><button type="button" id="close" class="quiet" aria-label="Close editor" autofocus>✕</button></div>
+        </div>
+      </div>
+      <div class="editor-content">
+        <p id="edit-error" class="error" role="alert" hidden></p>
+        <div id="fields">
+          <section class="editor-section" aria-labelledby="trigger-title">
+            <h3 id="trigger-title" class="sync-type-title"><label for="type">Sync Type:</label><select id="type"><option value="entity">Entity state</option><option value="time">Time window</option></select></h3>
+            <div id="source"></div>
+            <div id="times" class="grid" hidden><label>From<input id="start" type="time" value="00:00"></label><label>Until<input id="end" type="time" value="00:00"></label></div>
+            <p id="time-hint" class="hint" hidden>Uses Home Assistant’s timezone. Can cross midnight.</p>
+          </section>
+          <section class="editor-section" aria-labelledby="condition-title">
+            <h3 id="condition-title">Conditions <small>Optional · all must match</small></h3>
+            <div id="conditions"></div><button type="button" id="add-condition">+ Add condition</button>
+          </section>
+          <section class="editor-section" aria-labelledby="action-title">
+            <h3 id="action-title">Desired State</h3>
+            <div id="desired"></div>
+            <div id="add-desired"></div>
+          </section>
+          <section id="alternate-section" class="editor-section collapsed" aria-labelledby="alternate-title">
+            <h3 id="alternate-title" class="alternate-heading">Alternate State<label class="check"><input id="inverted" type="checkbox"> Enabled</label></h3>
+            <div id="alternate-box" hidden><div id="alternate"></div><div id="add-alternate"></div></div>
+          </section>
+          <details id="sync-options" class="editor-section">
+            <summary>Sync settings</summary>
+            <label>Priority · higher wins<input id="priority" type="number" min="0" max="100" value="50" required></label>
+            <h4>Reevaluate when</h4>
+            <div class="grid"><label class="check"><input id="on-source" type="checkbox" checked> Source changes</label><label class="check"><input id="on-target" type="checkbox" checked> Target changes</label><label class="check"><input id="on-condition" type="checkbox" checked> Condition changes</label><label class="check"><input id="on-interval" type="checkbox" checked> On interval</label></div>
+            <label>Interval in seconds<input id="interval" type="number" min="5" max="86400" value="60"></label>
+          </details>
+        </div>
+        <div id="yaml-box" hidden><label>Sync YAML<textarea id="yaml" rows="28" spellcheck="false"></textarea></label><p class="hint">One sync in a YAML list. Custom services need satisfied predicates.</p></div>
+      </div>
+      <div class="dialog-actions"><label class="check"><input id="enabled" type="checkbox" role="switch" class="switch" checked> Enabled</label><button type="button" id="delete" class="danger" hidden>Delete sync</button><button type="submit">Save sync</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

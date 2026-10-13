@@ -3,7 +3,7 @@ name: vnStat
 version: "0.1.0"
 slug: vnstat
 description: Persistent vnStat traffic monitoring with an ingress dashboard
-url: "https://github.com/inventor7777/vnstat-ha/tree/main/vnstat"
+url: "https://github.com/inventor7777/Home-Assistant-Apps/tree/main/vnstat"
 arch:
   - aarch64
   - amd64

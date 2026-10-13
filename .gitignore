@@ -1,3 +1,37 @@
-__pycache__/
-*.pyc
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+
+# Local secrets and runtime data
+.env
+.env.*
+!.env.example
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Frontend dependencies and generated builds
+node_modules/
+dist/
+build/
+coverage/
+
+# Editor and temporary files
+.idea/
+*.swp
+*.swo
+*~

@@ -1,0 +1,20 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r state_sync/requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: node --check state_sync/app/static/app.js
+      - run: node tests/test_ui.cjs
+      - run: bash -n vnstat/run.sh vnstat/vnstat-cli
+      - run: sh -n state_sync/run.sh
+      - run: python -m py_compile vnstat/app/server.py
