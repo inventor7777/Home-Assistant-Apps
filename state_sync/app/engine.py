@@ -7,7 +7,7 @@ from datetime import datetime
 
 import aiohttp
 
-from .model import active_action, action_commands, event_affects
+from .model import active_action, action_commands, action_targets, event_affects, target_entities
 
 LOG = logging.getLogger(__name__)
 
@@ -48,11 +48,11 @@ class Engine:
             status[r["id"]] = info
             if action is not None:
                 # shortcut: only explicit IDs compete, expand groups if group/member conflicts must be resolved.
-                for e in r["targets"]:
+                for e, target_action in action_targets(r, action):
                     if e in winners:
                         info["targets"][e] = f"Overridden by {winners[e][0]['name']}"
                     else:
-                        winners[e] = (r, action)
+                        winners[e] = (r, target_action)
         return winners, status
 
     async def reconcile(self):
@@ -75,7 +75,7 @@ class Engine:
             if interval_due:
                 self.intervals[r["id"]] = mono
             if force or interval_due or time_changed and r["trigger"]["type"] == "time" or any(event_affects(r, e) for e in events):
-                affected.update(r["targets"])
+                affected.update(target_entities(r))
         winners, self.status = self.winners(now, mono)
         for entity in list(self.pending):
             if entity not in winners:

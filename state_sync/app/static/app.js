@@ -1,9 +1,8 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
-let snapshot = {rules: [], revision: "", status: {}}, entities = [], selected = new Set();
-let editing = null, editRevision = "", rawMode = false, actionDomain = "light";
-const actionReaders = {};
+let snapshot = {rules: [], revision: "", status: {}}, entities = [];
+let editing = null, editRevision = "", rawMode = false;
 
 async function api(path, body) {
   const response = await fetch(`api/${path}`, body === undefined ? {} : {
@@ -85,7 +84,7 @@ function renderOverview() {
     c.toggle.setAttribute("aria-label", `Enable ${r.name}`);
     if (!c.toggle.disabled) c.toggle.checked = r.enabled !== false;
     const when = r.trigger.type === "time" ? `${r.trigger.start} – ${r.trigger.end}` : `${friendly(r.trigger.entity_id)} ${r.trigger.operator || "eq"} ${JSON.stringify(r.trigger.value)}`;
-    c.description.textContent = `${when} → ${r.targets.map(friendly).join(", ")}`;
+    c.description.textContent = `${when} → ${[...new Set([...stateEntries(r, "desired"), ...stateEntries(r, "alternate")].map(a => a.entity_id))].map(friendly).join(", ")}`;
     c.badge.textContent = s.reason;
     c.statuses.replaceChildren(...Object.entries(s.targets).map(([entity, reason]) => el("li", `${friendly(entity)}: ${reason}`)));
     c.picker.setAttribute("aria-label", `Snooze ${r.name}`);
@@ -117,7 +116,7 @@ function inheritTheme() {
   } catch (_) { /* Standalone or cross-origin embeds keep the local palette. */ }
 }
 
-function entityPicker(ids, changed, multiple = false) {
+function entityPicker(ids, changed, multiple = false, allowed = () => true) {
   const root = el("div", undefined, "entity-picker"), chips = el("div", undefined, "chips");
   const panel = el("div", undefined, "entity-search"); panel.hidden = true;
   const search = input("search"); search.placeholder = "Search name or entity ID"; search.autocomplete = "off";
@@ -137,10 +136,10 @@ function entityPicker(ids, changed, multiple = false) {
     results.replaceChildren();
     const q = search.value.trim().toLowerCase();
     if (q.length < 2) { results.append(el("p", "Type at least 2 characters to search.", "hint")); return; }
-    const matches = entities.filter(e => !ids.has(e.entity_id) && `${e.entity_id} ${e.attributes?.friendly_name || ""}`.toLowerCase().includes(q));
+    const matches = entities.filter(e => allowed(e.entity_id) && !ids.has(e.entity_id) && `${e.entity_id} ${e.attributes?.friendly_name || ""}`.toLowerCase().includes(q));
     for (const e of matches.slice(0, 30)) {
       const pick = button(friendly(e.entity_id), () => {
-        if (!multiple) ids.clear(); ids.add(e.entity_id); render(); changed();
+        if (!multiple) ids.clear(); ids.add(e.entity_id); changed(); render();
         if (multiple) { find(); search.focus(); } else close();
       }, "entity-result");
       pick.append(el("small", `${e.entity_id} · ${e.state}`)); results.append(pick);
@@ -192,10 +191,10 @@ const configs = {
   number: {states: [], fields: {value: ["Value", -1000000, 1000000]}}, input_number: {states: [], fields: {value: ["Value", -1000000, 1000000]}},
   select: {states: [], fields: {option: ["Option", "text"]}}, input_select: {states: [], fields: {option: ["Option", "text"]}}
 };
-function renderAction(id, action = {}) {
-  const root = $(id); root.replaceChildren(); const config = configs[actionDomain];
+function renderAction(root, action = {}, domain = "light") {
+  root.replaceChildren(); const config = configs[domain];
   const mode = select([["basic", "Desired state"], ["custom", "Custom YAML service call"]], action.service || !config ? "custom" : "basic");
-  mode.setAttribute("aria-label", id === "desired" ? "Action format" : "Alternate action format");
+  mode.setAttribute("aria-label", "Action format");
   root.append(mode); const basic = el("div", undefined, "action-fields"), custom = el("div", undefined, "action-fields"); root.append(basic, custom);
   let state, reads = [];
   if (config) {
@@ -221,10 +220,10 @@ function renderAction(id, action = {}) {
     state?.addEventListener("change", showFields); showFields();
   }
   const yaml = el("textarea"); yaml.rows = 12; yaml.spellcheck = false;
-  yaml.value = JSON.stringify(action.service ? action : {service: `${actionDomain}.turn_on`, data: {}, satisfied: [{entity_id: "$target", value: "on"}]}, null, 2);
+  yaml.value = JSON.stringify(action.service ? action : {service: `${domain}.turn_on`, data: {}, satisfied: [{entity_id: "$target", value: "on"}]}, null, 2);
   custom.append(label("YAML · service, data, satisfied", yaml), el("p", "The service is called separately for each winning target. $target refers to that entity in satisfied predicates. Data cannot override targets.", "hint"));
   const toggle = () => { basic.hidden = mode.value !== "basic"; custom.hidden = !basic.hidden; }; mode.addEventListener("change", toggle); toggle();
-  actionReaders[id] = () => {
+  return () => {
     if (mode.value === "custom") return {yaml: yaml.value};
     if (!config) throw new Error("This domain needs a custom service.");
     const data = {}; reads.forEach(read => read(data));
@@ -232,9 +231,38 @@ function renderAction(id, action = {}) {
     return {action: {...(state ? {state: state.value} : {}), data}};
   };
 }
-function updateTargets() {
-  const next = [...selected][0]?.split(".")[0] || "light";
-  if (next !== actionDomain) { actionDomain = next; renderAction("desired"); renderAction("alternate", {state: configs[next]?.states.at(-1)}); }
+function stateEntries(rule, key) {
+  const action = rule[key];
+  return Array.isArray(action) ? action : action ? (rule.targets || []).map(entity_id => ({entity_id, ...action})) : [];
+}
+function actionRow(entry) {
+  const {entity_id = "", ...action} = entry;
+  const row = el("div", undefined, "target-action"), head = el("div", undefined, "target-action-head");
+  row.entity = entity_id;
+  const name = el("div", friendly(entity_id)); name.append(el("small", entity_id));
+  const remove = button("Remove", () => row.remove()); remove.setAttribute("aria-label", `Remove ${friendly(entity_id)}`);
+  head.append(name, remove); row.append(head);
+  const fields = el("div"); row.append(fields);
+  row.read = renderAction(fields, action, entity_id.split(".")[0] || "light");
+  return row;
+}
+function populateState(rule, key) {
+  const root = $(key); root.replaceChildren(...stateEntries(rule, key).map(actionRow));
+  const ids = new Set();
+  $(`add-${key}`).replaceChildren(entityPicker(ids, () => {
+    const entity_id = [...ids][0];
+    if (entity_id) root.append(actionRow({entity_id}));
+    ids.clear();
+  }, false, entity => Object.hasOwn(configs, entity.split(".")[0]) && ![...root.children].some(row => row.entity === entity)));
+}
+function readState(key, actions) {
+  const entries = [];
+  for (const row of $(key).children) {
+    const result = row.read();
+    entries.push({entity_id: row.entity, ...(result.action || {})});
+    if (result.yaml) { actions[key] ||= {}; actions[key][row.entity] = result.yaml; }
+  }
+  return entries;
 }
 function populate(rule) {
   if (!editing && rule.id) $("form").dataset.newId = rule.id;
@@ -242,22 +270,19 @@ function populate(rule) {
   $("type").value = rule.trigger.type; $("source").replaceChildren(predicateRow(rule.trigger.type === "entity" ? rule.trigger : undefined));
   $("start").value = rule.trigger.start || "21:00"; $("end").value = rule.trigger.end || "01:00"; updateType();
   $("conditions").replaceChildren(...(rule.conditions || []).map(p => predicateRow(p, true)));
-  selected = new Set(rule.targets); actionDomain = rule.targets[0]?.split(".")[0] || "light";
-  renderAction("desired", rule.desired); renderAction("alternate", rule.alternate || {state: configs[actionDomain]?.states.at(-1)});
+  populateState(rule, "desired"); populateState(rule, "alternate");
   $("inverted").checked = !!rule.alternate; $("alternate-box").hidden = !rule.alternate;
   for (const k of ["source", "target", "condition"]) $(`on-${k}`).checked = rule.reevaluate?.[k] !== false;
   $("on-interval").checked = (rule.reevaluate?.interval ?? 60) > 0; $("interval").value = rule.reevaluate?.interval || 60; $("interval").disabled = !$("on-interval").checked;
-  $("targets").replaceChildren(entityPicker(selected, updateTargets, true));
   $("sync-options").open = false;
 }
 function readForm() {
-  const actions = {}, desired = actionReaders.desired();
-  if (desired.yaml) actions.desired = desired.yaml;
+  const actions = {};
   const rule = {id: editing?.id || $("form").dataset.newId, name: $("name").value.trim(), enabled: $("enabled").checked, priority: Number($("priority").value),
     trigger: $("type").value === "time" ? {type: "time", start: $("start").value, end: $("end").value} : {type: "entity", ...$("source").firstChild.read()},
-    conditions: [...$("conditions").children].map(n => n.read()), targets: [...selected], desired: desired.action || {},
+    conditions: [...$("conditions").children].map(n => n.read()), desired: readState("desired", actions),
     reevaluate: {source: $("on-source").checked, target: $("on-target").checked, condition: $("on-condition").checked, interval: $("on-interval").checked ? Number($("interval").value) : 0}};
-  if ($("inverted").checked) { const alt = actionReaders.alternate(); rule.alternate = alt.action || {}; if (alt.yaml) actions.alternate = alt.yaml; }
+  if ($("inverted").checked) rule.alternate = readState("alternate", actions);
   return {yaml: JSON.stringify([rule]), actions};
 }
 function updateType() { $("source").hidden = $("type").value !== "entity"; $("times").hidden = !$("source").hidden; $("time-hint").hidden = $("times").hidden; }
@@ -275,7 +300,7 @@ function setMode(raw) {
 async function openEditor(rule = null) {
   editing = rule; error("edit-error", ""); $("editor-verb").textContent = rule ? "Edit" : "New"; $("delete").hidden = !rule;
   editRevision = snapshot.revision; $("form").dataset.newId = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, "0")).join("");
-  populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
+  populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, desired: []});
   setMode(false); $("editor").showModal();
   try {
     entities = await api("entities");

@@ -34,6 +34,25 @@ def rule(ident="porch", priority=50, **overrides):
 
 
 class ModelTests(unittest.TestCase):
+    def test_per_entity_states_validate_domains_duplicates_and_custom_dependencies(self):
+        r = rule(desired=[{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 30}},
+                          {"entity_id": "climate.house", "state": "heat", "data": {"temperature": 21}}],
+                 alternate=[{"entity_id": "switch.other", "state": "off"}])
+        del r["targets"]
+        validate_rules([r])
+        self.assertTrue(event_affects(r, "switch.other"))
+        custom = {"entity_id": "light.porch_a", "service": "light.turn_on", "satisfied": [{"entity_id": "sensor.verify", "value": "ok"}]}
+        r["desired"] = [custom]
+        self.assertTrue(event_affects(r, "sensor.verify"))
+        for entries in [[{"entity_id": "binary_sensor.night", "state": "on"}],
+                        [{**custom, "entity_id": "sensor.verify"}], [custom, custom], [],
+                        [{"entity_id": "climate.house", "state": "heat", "data": {"brightness_pct": 30}}]]:
+            with self.subTest(entries=entries), self.assertRaises(ValueError):
+                validate_rules([{**r, "desired": entries}])
+        validate_rules([{**r, "desired": [], "alternate": []}], draft=True)
+        with self.assertRaises(ValueError):
+            validate_rules([{**r, "targets": ["light.porch_a"]}])
+
     def test_validation_and_multi_targets(self):
         validate_rules([rule()])
         for change in [{"priority": 101}, {"targets": []}, {"desired": {"state": True}}, {"desired": {"state": "on", "data": {"brightness_pct": 0}}}, {"unexpected": 1}, {"trigger": {"type": "entity", "entity_id": "x.y", "value": "on", "operator": []}}]:
@@ -146,6 +165,19 @@ class StoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 parse(content)
 
+    def test_per_entity_yaml_overrides_and_persistence(self):
+        r = rule(desired=[{"entity_id": "light.porch_a"}], alternate=[{"entity_id": "switch.other", "state": "off"}])
+        del r["targets"]
+        custom = "service: light.turn_on\nsatisfied:\n  - entity_id: $target\n    value: 'on'\n"
+        parsed = parse(json.dumps([r]), {"desired": {"light.porch_a": custom}})
+        self.store.save(parsed, self.store.revision)
+        reloaded = Store(self.path)
+        self.assertEqual(reloaded.rules, parsed)
+        self.assertEqual(reloaded.rules[0]["desired"][0]["entity_id"], "light.porch_a")
+        for override in [{"light.missing": custom}, {"light.porch_a": "entity_id: light.other\nstate: 'on'"}, {"light.porch_a": []}]:
+            with self.assertRaises(ValueError):
+                parse(json.dumps([r]), {"desired": override})
+
 
 class FakeHA:
     connected = True
@@ -165,6 +197,26 @@ class FakeHA:
 class EngineTests(unittest.IsolatedAsyncioTestCase):
     def make_engine(self, rules):
         return Engine(SimpleNamespace(rules=rules, error=None), FakeHA())
+
+    async def test_per_entity_settings_independent_alternate_and_priority(self):
+        r = rule(desired=[{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 30}},
+                          {"entity_id": "light.porch_b", "state": "on", "data": {"brightness_pct": 80}}],
+                 alternate=[{"entity_id": "switch.other", "state": "off"}])
+        del r["targets"]
+        engine = self.make_engine([r])
+        engine.ha.states["switch.other"] = state("on")
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls, [("light.turn_on", "light.porch_a", {"brightness_pct": 30}),
+                                         ("light.turn_on", "light.porch_b", {"brightness_pct": 80})])
+        engine.ha.states["binary_sensor.night"] = state("off")
+        engine.changed("binary_sensor.night")
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls[-1], ("switch.turn_off", "switch.other", {}))
+        self.assertEqual(set(engine.pending), {"switch.other"})
+        engine.store.rules.append(rule("higher", 80, targets=["switch.other"], desired={"state": "on"}, alternate={"state": "on"}))
+        winners, status = engine.winners(datetime.now(engine.ha.zone), time.monotonic())
+        self.assertEqual(winners["switch.other"][0]["id"], "higher")
+        self.assertIn("Overridden", status["porch"]["targets"]["switch.other"])
 
     async def test_conflict_only_overrides_one_target_and_ties_stable(self):
         engine = self.make_engine([rule(), rule("special", 80, targets=["light.porch_a"], desired={"state": "off"})])
@@ -302,6 +354,21 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.calls), 2)
         response = await self.post("rule", {"id": "porch", "yaml": json.dumps([rule()]), "revision": "stale"})
         self.assertEqual(response.status, 409)
+
+    async def test_save_per_entity_actions_and_reject_sensor_target(self):
+        r = rule(desired=[{"entity_id": "light.porch_a"}, {"entity_id": "light.porch_b", "state": "off"}],
+                 alternate=[{"entity_id": "light.porch_b", "state": "on"}])
+        del r["targets"]
+        custom = "service: light.turn_on\nsatisfied:\n  - entity_id: $target\n    value: 'on'\n"
+        response = await self.post("rule", {"yaml": json.dumps([r]), "actions": {"desired": {"light.porch_a": custom}}, "revision": self.store.revision})
+        self.assertEqual(response.status, 200)
+        await self.until(lambda: len(self.calls) == 1)
+        self.assertEqual(self.calls[0][1]["entity_id"], "light.porch_a")
+        revision = self.store.revision
+        invalid = {**self.store.rules[0], "desired": [{"entity_id": "binary_sensor.night", "state": "off"}]}
+        response = await self.post("rule", {"id": "porch", "yaml": json.dumps([invalid]), "revision": revision})
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.store.revision, revision)
 
     async def test_ui_assets_security_and_custom_yaml_preview(self):
         for path in ["/", "/app.js", "/style.css", "/theme.css", "/api/snapshot", "/api/entities"]:

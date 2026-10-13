@@ -34,11 +34,13 @@
             <div id="conditions"></div><button type="button" id="add-condition">+ Add condition</button>
           </section>
           <section class="editor-section" aria-labelledby="action-title">
-            <h3 id="action-title">Actions</h3>
-            <h4>Target entities</h4><div id="targets"></div>
+            <h3 id="action-title">Desired State</h3>
             <div id="desired"></div>
-            <label class="check alternate-toggle"><input id="inverted" type="checkbox"> Set an alternate state when the trigger doesn’t match</label>
-            <div id="alternate-box" hidden><h4>Alternate state</h4><div id="alternate"></div></div>
+            <div id="add-desired"></div>
+          </section>
+          <section class="editor-section" aria-labelledby="alternate-title">
+            <h3 id="alternate-title" class="alternate-heading">Alternate State<label class="check"><input id="inverted" type="checkbox"> Enabled</label></h3>
+            <div id="alternate-box" hidden><div id="alternate"></div><div id="add-alternate"></div></div>
           </section>
           <details id="sync-options" class="editor-section">
             <summary>Sync settings</summary>

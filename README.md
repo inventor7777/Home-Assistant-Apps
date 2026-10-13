@@ -65,16 +65,21 @@ Example with two lights, a manual gate, and inversion:
     - entity_id: switch.manual
       value: 'off'
       unknown: skip
-  targets:
-    - light.porch_a
-    - light.porch_b
   desired:
-    state: 'on'
-    data:
-      brightness_pct: 50
-      transition: 2
+    - entity_id: light.porch_a
+      state: 'on'
+      data:
+        brightness_pct: 30
+        transition: 2
+    - entity_id: light.porch_b
+      state: 'on'
+      data:
+        brightness_pct: 80
   alternate:
-    state: 'off'
+    - entity_id: light.porch_a
+      state: 'off'
+    - entity_id: switch.porch_sign
+      state: 'off'
   reevaluate:
     source: true
     target: true
@@ -94,25 +99,30 @@ trigger:
 
 Predicates support `operator: eq|ne|gt|lt|ge|le`, optional `attribute`, and numeric `tolerance`. State strings such as `'on'` and `'off'` must be quoted in YAML. Numeric comparisons use numeric values. Missing attributes skip the sync by default. `interval: 0` disables interval reevaluation.
 
-Custom actions replace `desired` (or `alternate`) with one service and an explicit list of already-satisfied predicates:
+Desired State and Alternate State each have independent entity lists and per-entity settings. Entities omitted from the active list are left alone. Conditions gate both lists; an unknown source skips both. The same entity can appear once in each list. Existing shared-action YAML (`targets` plus a single `desired`/`alternate` mapping) still loads; saving it in the form expands the shared settings into per-entity entries.
+
+Custom actions replace an individual entity’s state settings with a service and an explicit list of already-satisfied predicates:
 
 ```yaml
 desired:
-  service: media_player.volume_set
-  data:
-    volume_level: 0.3
-  satisfied:
-    - entity_id: $target
-      attribute: volume_level
-      value: 0.3
-      tolerance: 0.01
+  - entity_id: light.porch_a
+    service: light.turn_on
+    data:
+      brightness_pct: 30
+    satisfied:
+      - entity_id: $target
+        value: 'on'
+      - entity_id: $target
+        attribute: brightness
+        value: 77
+        tolerance: 2
 ```
 
 The service receives only the individual winning target. `data` cannot override entity/device/area targets. All `satisfied` predicates must match to suppress the call; if one is unknown with the default policy, the target is skipped. Custom services must represent an idempotent desired state; a toggle, notification, or one-shot action will not behave as a sync. There is no Jinja or arbitrary HA automation YAML execution.
 
 Basic data fields: light (`brightness_pct`, `transition`, `rgb_color`, `color_temp_kelvin`); fan (`percentage`); humidifier (`humidity`, `mode`); climate (`temperature` or `target_temp_low`/`target_temp_high`, `preset_mode`); cover (`position`); number (`value`); select (`option`). Climate `state` is its HVAC mode, not whether it is currently heating/cooling. Light brightness compares within 2/255, RGB within 3/channel, Kelvin within 100; cover/fan/humidity within 1; temperature within 0.1. Transitions are call parameters, not persistent attributes.
 
-Select individual member entities rather than a group and its members: arbitration operates on explicit entity IDs, without expanding groups, areas, or devices. Mixed domains work only when the same desired-state fields make sense for every target; otherwise use separate syncs.
+Select individual member entities rather than a group and its members: arbitration operates on explicit entity IDs, without expanding groups, areas, or devices. Each entity has its own domain-specific settings, so mixed domains can share one sync. The target picker supports light, switch, input_boolean, fan, humidifier, climate, cover, lock, number/input_number, and select/input_select. Sensors remain available as triggers and conditions.
 
 ## Development
 
@@ -123,6 +133,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r state_sync/requirements.txt
 .venv/bin/python -m unittest discover -s tests -v
 node --check state_sync/app/static/app.js
+node tests/test_ui.cjs
 ```
 
 For a local UI preview without HA credentials:

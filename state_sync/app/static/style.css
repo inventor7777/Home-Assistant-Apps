@@ -43,7 +43,13 @@ details[open] > summary { margin-bottom: 16px; }
 .advanced { margin-top: 14px; color: var(--muted); font-size: 13px; }
 .advanced label { color: var(--text); }
 .advanced .grid { margin-top: 12px; }
-.alternate-toggle { margin-top: 24px; }
+.alternate-heading, .target-action-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.target-action { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 20px; }
+.target-action-head { margin-bottom: 12px; font-weight: 600; }
+.target-action-head > div { min-width: 0; overflow-wrap: anywhere; }
+.target-action-head small { display: block; font-weight: 400; font-size: 12px; }
+.target-action-head button { flex-shrink: 0; font-size: 12px; padding: 5px 10px; }
+#add-desired > .entity-picker, #add-alternate > .entity-picker { margin-bottom: 0; }
 .hint { font-size: 12px; margin: 10px 0 0; }
 .predicate { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; }
 .predicate:last-child { border: 0; }

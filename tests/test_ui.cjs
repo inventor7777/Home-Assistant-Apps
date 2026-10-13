@@ -9,8 +9,10 @@ class Element {
     this.style = {setProperty: (key, value) => { this.style[key] = value; }, removeProperty: key => { delete this.style[key]; }};
     this.classList = {toggle: (key, value) => { this.attributes[key] = value; }};
   }
-  append(...children) { this.children.push(...children); }
-  replaceChildren(...children) { this.children = children; }
+  append(...children) { children.forEach(child => { child.parent = this; }); this.children.push(...children); }
+  replaceChildren(...children) { this.children = []; this.append(...children); }
+  remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
+  focus() { document.activeElement = this; }
   addEventListener(type, callback) { this.listeners[type] = callback; }
   setAttribute(key, value) { this.attributes[key] = value; }
   querySelector(tag) { return this.children.find(child => child.tag === tag); }
@@ -59,6 +61,48 @@ vm.runInContext("stream.onerror()", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, true);
 vm.runInContext("applySnapshot(snapshot)", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, false);
+
+vm.runInContext(`
+  populate({name: "Mixed", trigger: {type: "entity", entity_id: "binary_sensor.night", value: "on"},
+    desired: [{entity_id: "light.porch", state: "on", data: {brightness_pct: 30}}, {entity_id: "switch.other", state: "off"}],
+    alternate: [{entity_id: "climate.house", state: "heat", data: {temperature: 21}}]});
+`, context);
+let edited = JSON.parse(vm.runInContext("readForm().yaml", context));
+assert.equal(edited[0].desired.length, 2);
+assert.equal(edited[0].desired[0].data.brightness_pct, 30);
+assert.equal(edited[0].desired[1].state, "off");
+assert.equal(edited[0].alternate[0].entity_id, "climate.house");
+assert.equal(edited[0].alternate[0].data.temperature, 21);
+assert.equal("targets" in edited[0], false);
+nodes.get("desired").children[0].children[0].children[1].listeners.click();
+assert.equal(nodes.get("desired").children.length, 1);
+assert.equal(nodes.get("alternate").children.length, 1);
+
+vm.runInContext(`populate({name: "Legacy", trigger: {type: "entity", entity_id: "binary_sensor.night", value: "on"},
+  targets: ["light.porch", "light.second"], desired: {state: "on", data: {brightness_pct: 80}}, alternate: {state: "off"}})`, context);
+edited = JSON.parse(vm.runInContext("readForm().yaml", context));
+assert.equal(edited[0].desired[1].data.brightness_pct, 80);
+assert.equal(edited[0].alternate[1].entity_id, "light.second");
+
+vm.runInContext(`entities = [{entity_id: "binary_sensor.night", attributes: {friendly_name: "Night sensor"}},
+  {entity_id: "light.night", attributes: {friendly_name: "Night light"}}]`, context);
+const targetSearch = nodes.get("add-desired").children[0].children[2];
+targetSearch.children[0].children[0].value = "night";
+targetSearch.children[0].children[0].listeners.input();
+assert.equal(targetSearch.children[2].children.length, 1);
+assert.equal(targetSearch.children[2].children[0].textContent, "Night light");
+targetSearch.children[2].children[0].listeners.click();
+assert.equal(nodes.get("desired").children.at(-1).entity, "light.night");
+assert.equal(nodes.get("alternate").children.length, 2);
+const sourceSearch = nodes.get("source").firstChild.children[0].children[2];
+sourceSearch.children[0].children[0].value = "night";
+sourceSearch.children[0].children[0].listeners.input();
+assert.equal(sourceSearch.children[2].children[0].textContent, "Night light");
+vm.runInContext(`const conditionPicker = entityPicker(new Set(), () => {});`, context);
+const conditionSearch = vm.runInContext("conditionPicker.children[2]", context);
+conditionSearch.children[0].children[0].value = "night";
+conditionSearch.children[0].children[0].listeners.input();
+assert.equal(conditionSearch.children[2].children.length, 2);
 
 // Moving name/enabled outside #fields must preserve draft round trips and validation.
 context.fetch = async (path, options) => {
