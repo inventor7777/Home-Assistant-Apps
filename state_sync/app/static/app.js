@@ -59,7 +59,7 @@ function renderOverview() {
     for (const type of ["entity", "time"]) {
       const rules = snapshot.rules.filter(r => r.trigger.type === type);
       if (!rules.length) continue;
-      const heading = el("div", undefined, "section-head"); heading.append(el("h2", type === "entity" ? "Entity syncs" : "Time syncs"), el("small", `${rules.length} sync${rules.length === 1 ? "" : "s"}`)); root.append(heading);
+      const heading = el("div", undefined, "section-head"); heading.append(el("h2", type === "entity" ? "Entity Syncs" : "Time Syncs"), el("small", `${rules.length} Sync${rules.length === 1 ? "" : "s"}`)); root.append(heading);
       const cards = el("div", undefined, "cards"); root.append(cards);
       for (const r of rules) {
         const current = () => snapshot.rules.find(rule => rule.id === r.id);

@@ -2,7 +2,7 @@
 @media (prefers-color-scheme: dark) { :root { --bg: #10151e; --surface: #192130; --text: #e7edf7; --muted: #a4b0c4; --line: #303c50; --soft: #222e42; --error: #ffabb5; --accent: #93b4ff; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
-main { max-width: 1060px; padding: 28px; margin: auto; }
+main { max-width: 1200px; padding: 28px; margin: auto; }
 header, .dialog-head, .section-head, .card-head, .dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 main > header { flex-wrap: wrap; }
 .header-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
@@ -15,7 +15,7 @@ p { margin: 8px 0; }
 .hint, small { color: var(--muted); }
 .section-head { margin: 28px 0 12px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 14px; }
-.card { display: flex; flex-direction: column; padding: 20px; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; }
+.card { display: flex; flex-direction: column; padding: 15px 20px; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; }
 .card-head { align-items: flex-start; }
 .card-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .card-controls select { width: auto; padding: 7px; font-size: 12px; }
