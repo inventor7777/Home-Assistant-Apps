@@ -278,8 +278,10 @@
       <section class="section card">
         <h2>CLI output</h2>
         <div class="toolbar">
-          <button id="show-normal" class="active" type="button">vnStat Normal</button>
-          <button id="show-json" type="button">vnStat JSON</button>
+          <button id="show-normal" class="active" type="button">vnStat</button>
+          <button id="show-daily" type="button">Daily</button>
+          <button id="show-monthly" type="button">Monthly</button>
+          <button id="show-json" type="button">JSON</button>
         </div>
         <pre id="cli-output">Loading...</pre>
       </section>
@@ -417,8 +419,11 @@
       };
 
       const setActiveCliButton = (mode) => {
-        document.getElementById("show-normal").classList.toggle("active", mode === "normal");
-        document.getElementById("show-json").classList.toggle("active", mode === "json");
+        for (const button of document.querySelectorAll(".toolbar button")) {
+          const active = button.id === `show-${mode}`;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-pressed", String(active));
+        }
       };
 
       const loadCliOutput = async (mode = "normal") => {
@@ -457,14 +462,12 @@
         }
       };
 
-      document.getElementById("show-normal").addEventListener("click", (event) => {
-        event.preventDefault();
-        loadCliOutput("normal");
-      });
-      document.getElementById("show-json").addEventListener("click", (event) => {
-        event.preventDefault();
-        loadCliOutput("json");
-      });
+      for (const button of document.querySelectorAll(".toolbar button")) {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          loadCliOutput(button.id.slice("show-".length));
+        });
+      }
 
       load();
       loadCliOutput("normal");

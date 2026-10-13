@@ -28,10 +28,11 @@ def run_vnstat() -> dict:
     return json.loads(result.stdout)
 
 
-def run_vnstat_text(json_mode: bool) -> str:
-    command = ["vnstat", "--config", CONFIG_FILE]
-    if json_mode:
-        command.append("--json")
+CLI_MODES = {"normal": (), "daily": ("--days",), "monthly": ("--months",), "json": ("--json",)}
+
+
+def run_vnstat_text(mode: str) -> str:
+    command = ["vnstat", "--config", CONFIG_FILE, *CLI_MODES[mode]]
     if INTERFACE:
         command.extend(["-i", INTERFACE])
     result = subprocess.run(command, check=True, capture_output=True, text=True)
@@ -88,25 +89,10 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        if parsed.path == "/api/cli/json":
+        mode = parsed.path.removeprefix("/api/cli/")
+        if parsed.path.startswith("/api/cli/") and mode in CLI_MODES:
             try:
-                output = run_vnstat_text(json_mode=True)
-            except subprocess.CalledProcessError as err:
-                self._send_json(
-                    {
-                        "status": "error",
-                        "message": err.stderr.strip() or "vnstat command failed",
-                    },
-                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-                return
-
-            self._send_json({"status": "ok", "output": output})
-            return
-
-        if parsed.path == "/api/cli/normal":
-            try:
-                output = run_vnstat_text(json_mode=False)
+                output = run_vnstat_text(mode)
             except subprocess.CalledProcessError as err:
                 self._send_json(
                     {

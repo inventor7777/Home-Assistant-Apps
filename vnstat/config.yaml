@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/apps/configuration#app-configuration
 name: vnStat
-version: "0.1.1"
+version: "0.1.2"
 slug: vnstat
 description: Persistent vnStat traffic monitoring with an ingress dashboard
 url: "https://github.com/inventor7777/Home-Assistant-Apps/tree/main/vnstat"
