@@ -1,7 +1,7 @@
 #!/usr/bin/with-contenv bashio
 set -euo pipefail
 
-readonly DB_DIR="/data/vnstat"
+readonly DB_DIR="/config/vnstat"
 readonly CONFIG_FILE="/data/vnstat.conf"
 readonly APP_DIR="/app"
 readonly WEB_PORT="8099"

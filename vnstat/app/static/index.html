@@ -6,15 +6,28 @@
     <title>vnStat</title>
     <style>
       :root {
-        --bg: #6b7280;
-        --bg-deep: #4b5563;
-        --panel: rgba(17, 24, 39, 0.72);
-        --panel-strong: rgba(15, 23, 42, 0.86);
-        --text: #f9fafb;
-        --muted: #cbd5e1;
-        --accent: #60a5fa;
-        --line: rgba(148, 163, 184, 0.18);
-        --glow: rgba(96, 165, 250, 0.24);
+        color-scheme: light dark;
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --soft: #f0f0f0;
+        --text: #212121;
+        --muted: #727272;
+        --accent: #03a9f4;
+        --on-accent: #ffffff;
+        --line: #e0e0e0;
+        --error: #db4437;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111111;
+          --surface: #1c1c1c;
+          --soft: #282828;
+          --text: #e1e1e1;
+          --muted: #9b9b9b;
+          --line: #383838;
+          --error: #ff5252;
+        }
       }
 
       * {
@@ -26,9 +39,7 @@
         min-height: 100vh;
         color: var(--text);
         font: 16px/1.5 "Avenir Next", "Segoe UI", sans-serif;
-        background:
-          radial-gradient(circle at top, rgba(96, 165, 250, 0.08), transparent 38%),
-          linear-gradient(180deg, var(--bg), var(--bg-deep));
+        background: var(--bg);
         display: grid;
         place-items: center;
       }
@@ -62,15 +73,10 @@
       }
 
       .card {
-        background: var(--panel);
-        backdrop-filter: blur(16px);
+        background: var(--surface);
         border: 1px solid var(--line);
         border-radius: 24px;
         padding: 24px;
-        box-shadow:
-          0 0 0 1px rgba(96, 165, 250, 0.08),
-          0 0 28px var(--glow),
-          0 18px 40px rgba(15, 23, 42, 0.28);
       }
 
       .live-card {
@@ -139,11 +145,11 @@
       }
 
       .stat-icon.up {
-        color: #f87171;
+        color: var(--error);
       }
 
       .stat-icon.down {
-        color: #60a5fa;
+        color: var(--accent);
       }
 
       .stat-value {
@@ -173,8 +179,8 @@
       }
 
       .error {
-        color: #dbeafe;
-        background: rgba(30, 41, 59, 0.72);
+        color: var(--text);
+        border-color: var(--error);
       }
 
       .toolbar {
@@ -185,23 +191,23 @@
       }
 
       button {
-        border: 1px solid rgba(96, 165, 250, 0.28);
-        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid var(--line);
+        background: var(--surface);
         color: var(--text);
         border-radius: 12px;
         padding: 10px 14px;
         font: inherit;
         cursor: pointer;
-        box-shadow: 0 0 18px rgba(96, 165, 250, 0.12);
       }
 
       button:hover {
-        background: rgba(30, 41, 59, 0.92);
+        background: var(--soft);
       }
 
       button.active {
-        border-color: rgba(96, 165, 250, 0.5);
-        box-shadow: 0 0 22px rgba(96, 165, 250, 0.2);
+        border-color: var(--accent);
+        background: var(--accent);
+        color: var(--on-accent);
       }
 
       pre {
@@ -209,9 +215,9 @@
         padding: 18px;
         overflow-x: auto;
         border-radius: 18px;
-        background: rgba(2, 6, 23, 0.82);
+        background: var(--soft);
         border: 1px solid var(--line);
-        color: #dbeafe;
+        color: var(--text);
         font: 14px/1.5 "SFMono-Regular", "Menlo", "Consolas", monospace;
         white-space: pre-wrap;
       }
@@ -282,6 +288,30 @@
     </main>
 
     <script>
+      function inheritTheme() {
+        try {
+          if (window.parent === window) return;
+          const host = window.parent.document.querySelector("home-assistant");
+          if (!host) return;
+          const copy = () => {
+            const styles = window.parent.getComputedStyle(host);
+            const colors = {bg: "primary-background-color", surface: "card-background-color", text: "primary-text-color", muted: "secondary-text-color", line: "divider-color", soft: "secondary-background-color", accent: "primary-color", "on-accent": "text-primary-color", error: "error-color"};
+            for (const [local, ha] of Object.entries(colors)) {
+              const value = styles.getPropertyValue(`--${ha}`).trim();
+              if (value && CSS.supports("color", value)) document.documentElement.style.setProperty(`--${local}`, value);
+              else document.documentElement.style.removeProperty(`--${local}`);
+            }
+            const background = styles.getPropertyValue("--primary-background-color").trim();
+            if (background) document.documentElement.style.colorScheme = host.hass?.themes?.darkMode ? "dark" : "light";
+          };
+          copy();
+          // Ingress is same-origin; HA sets active theme variables on the document root.
+          new MutationObserver(copy).observe(window.parent.document.documentElement, {attributes: true, attributeFilter: ["style"]});
+        } catch (_) { /* Standalone or cross-origin embeds keep the local palette. */ }
+      }
+
+      inheritTheme();
+
       const formatBytes = (value) => {
         if (value === undefined || value === null) return "n/a";
         const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
@@ -355,7 +385,7 @@
           : "n/a";
         const meta = document.getElementById("meta");
         const footer = document.getElementById("footer");
-        meta.textContent = `Interface: ${payload.interface || "auto"} Database: /data/vnstat`;
+        meta.textContent = `Interface: ${payload.interface || "auto"} Database: /config/vnstat`;
         footer.textContent = `Updated: ${updatedText}`;
       };
 

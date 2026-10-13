@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/apps/configuration#app-configuration
 name: vnStat
-version: "0.1.0"
+version: "0.1.1"
 slug: vnstat
 description: Persistent vnStat traffic monitoring with an ingress dashboard
 url: "https://github.com/inventor7777/Home-Assistant-Apps/tree/main/vnstat"
@@ -17,6 +17,10 @@ ingress_stream: true
 panel_icon: mdi:chart-line
 panel_title: vnStat
 watchdog: "http://[HOST]:[PORT:8099]/api/health"
+map:
+  - type: app_config
+    read_only: false
+    path: /config
 options:
   interface: ""
 schema:

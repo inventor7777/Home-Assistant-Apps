@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
-DB_DIR = os.environ.get("VNSTAT_DB_DIR", "/data/vnstat")
+DB_DIR = os.environ.get("VNSTAT_DB_DIR", "/config/vnstat")
 CONFIG_FILE = os.environ.get("VNSTAT_CONFIG", "/data/vnstat.conf")
 INTERFACE = os.environ.get("VNSTAT_INTERFACE", "")
 PORT = int(os.environ.get("APP_PORT", "8099"))
