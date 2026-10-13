@@ -8,10 +8,16 @@
 </head>
 <body>
   <main>
-    <header><h1 id="app-title">State Sync</h1><div class="header-actions"><button id="resync" class="quiet">Resync All</button><button id="new">+ New Sync</button></div></header>
+    <header><h1 id="app-title">State Sync</h1><div class="header-actions"><button id="resync" class="quiet"><span aria-hidden="true">⟳</span> Resync All</button><button id="new">+ New Sync</button></div></header>
     <p id="error" class="error" role="alert" hidden></p>
     <div id="overview"></div>
   </main>
+  <dialog id="sync-details" class="status-popup" aria-labelledby="details-title">
+    <div class="details-layout">
+      <div class="details-head"><h2 id="details-title"></h2><button type="button" id="details-close" class="quiet" aria-label="Close status details" autofocus>✕</button></div>
+      <div id="details-body"></div>
+    </div>
+  </dialog>
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="form">
       <div class="editor-top">

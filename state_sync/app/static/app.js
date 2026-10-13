@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const el = (tag, text, cls) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; if (cls) n.className = cls; return n; };
 let snapshot = {rules: [], revision: "", status: {}}, entities = [];
-let editing = null, editRevision = "", rawMode = false;
+let editing = null, editRevision = "", rawMode = false, detailsId = null;
 
 async function api(path, body) {
   const response = await fetch(`api/${path}`, body === undefined ? {} : {
@@ -32,6 +32,7 @@ function applySnapshot(data) {
   connectionState(snapshot.connected);
   error("error", snapshot.error && snapshot.connected ? snapshot.error : "");
   renderOverview();
+  if ($("sync-details").open) renderDetails();
   if (snapshot.connected && !entities.length && !loadingEntities) {
     loadingEntities = true;
     api("entities").then(data => { entities = data; renderOverview(); })
@@ -72,11 +73,13 @@ function renderOverview() {
           catch (e) { i.checked = current().enabled !== false; error("error", e.message); } finally { i.disabled = false; }
         });
         const toggle = enabled.querySelector("input"); toggle.setAttribute("role", "switch"); toggle.className = "switch";
-        const heading = el("div", undefined, "card-heading"), status = el("span", undefined, "card-status");
-        status.setAttribute("role", "status");
+        const heading = el("div", undefined, "card-heading"), status = button("", () => {
+          detailsId = r.id; renderDetails(); $("sync-details").showModal();
+        }, "card-status");
+        status.setAttribute("aria-haspopup", "dialog");
         heading.append(title); head.append(heading); card.append(head);
-        const description = el("p", undefined, "description"), statuses = el("ul", undefined, "target-status");
-        card.append(description, statuses);
+        const description = el("p", undefined, "description");
+        card.append(description);
         const picker = select([["", "Snooze…"], [300, "5 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [21600, "6 hours"], [43200, "12 hours"], [86400, "24 hours"], [0, "Resume now"]], "");
         picker.addEventListener("change", async () => {
           picker.disabled = true;
@@ -86,9 +89,9 @@ function renderOverview() {
         });
         const controls = el("div", undefined, "card-controls"); controls.append(picker, enabled); head.append(controls);
         const remaining = el("span"), foot = el("div", undefined, "card-foot");
-        const editButton = button("Edit", edit); foot.append(status, remaining, editButton);
+        const editButton = button("✎ Edit", edit); foot.append(status, remaining, editButton);
         card.append(foot); cards.append(card);
-        overviewCards.set(r.id, {title, toggle, description, status, statuses, picker, remaining, editButton});
+        overviewCards.set(r.id, {title, toggle, description, status, picker, remaining, editButton});
       }
     }
   }
@@ -98,16 +101,55 @@ function renderOverview() {
     c.toggle.setAttribute("aria-label", `Enable ${r.name}`);
     if (!c.toggle.disabled) c.toggle.checked = r.enabled !== false;
     const when = r.trigger.type === "time" ? `${r.trigger.start} – ${r.trigger.end}` : `${friendly(r.trigger.entity_id)} ${r.trigger.operator || "eq"} ${JSON.stringify(r.trigger.value)}`;
-    c.description.textContent = `${when} → ${[...new Set([...r.desired, ...(r.alternate || [])].map(a => a.entity_id))].map(friendly).join(", ")}`;
+    const targets = [...new Set([...r.desired, ...(r.alternate || [])].map(a => a.entity_id))];
+    c.description.textContent = `${when} → ${targets.length > 5 ? `${targets.length} targets` : targets.map(friendly).join(", ")}`;
     const [text, tone] = overviewStatus(s);
     c.status.textContent = text;
     c.status.className = `card-status ${tone}`;
-    c.statuses.replaceChildren(...Object.entries(s.targets).map(([entity, reason]) => el("li", `${friendly(entity)}: ${reason}`)));
+    c.status.setAttribute("aria-label", `${text} — status details for ${r.name}`);
     c.picker.setAttribute("aria-label", `Snooze ${r.name}`);
     c.remaining.textContent = s.snooze_seconds > 0 ? `${Math.ceil(s.snooze_seconds / 60)}m left` : "";
     c.remaining.hidden = !s.snooze_seconds;
     c.editButton.setAttribute("aria-label", `Edit ${r.name}`);
   }
+}
+
+function predicateText(p) {
+  return `${friendly(p.entity_id)} (${p.entity_id})${p.attribute ? ` · ${p.attribute}` : ""} ${p.operator || "eq"} ${JSON.stringify(p.value)} · unknown: ${p.unknown || "skip"}${p.tolerance ? ` · tolerance: ${p.tolerance}` : ""}`;
+}
+function renderDetails() {
+  const r = snapshot.rules.find(rule => rule.id === detailsId);
+  if (!r) { $("sync-details").close(); return; }
+  const s = snapshot.status[r.id] || {reason: "Waiting for evaluation", targets: {}};
+  const [text, tone] = overviewStatus(s), body = $("details-body");
+  $("details-title").textContent = r.name;
+  body.replaceChildren(el("p", text, `card-status ${tone}`));
+  if (text !== s.reason) body.append(el("p", s.reason));
+  body.append(el("p", `Priority ${r.priority ?? 50} · ${snapshot.connected ? "Connected" : "Disconnected"}`));
+  if (s.snooze_seconds > 0) body.append(el("p", `Snoozed for ${Math.ceil(s.snooze_seconds / 60)} more minutes`));
+  if (snapshot.error) body.append(el("p", snapshot.error, "error"));
+  body.append(el("h4", "Sync Type"), el("p", r.trigger.type === "time" ? `${r.trigger.start} – ${r.trigger.end} · ${snapshot.timezone}` : predicateText(r.trigger)));
+  body.append(el("h4", "Conditions"));
+  const conditions = el("ul");
+  for (const p of r.conditions || []) conditions.append(el("li", predicateText(p)));
+  body.append(conditions.children.length ? conditions : el("p", "None"));
+  for (const key of ["desired", "alternate"]) {
+    body.append(el("h4", key === "desired" ? "Desired State" : "Alternate State"));
+    const list = el("ul", undefined, "details-targets");
+    const enforcing = s.reason === (key === "desired" ? "Enforcing" : "Enforcing alternate");
+    for (const {entity_id, ...action} of r[key] || []) {
+      const item = el("li", `${friendly(entity_id)} (${entity_id})`);
+      item.append(el("p", enforcing ? s.targets[entity_id] || "Waiting for evaluation" : "Not enforcing"));
+      item.append(el("pre", JSON.stringify(action, null, 2)));
+      list.append(item);
+    }
+    body.append(list.children.length ? list : el("p", "None"));
+  }
+  const opts = r.reevaluate || {};
+  body.append(el("h4", "Reevaluate when"), el("p", [
+    opts.source !== false && "Source changes", opts.target !== false && "Target changes",
+    opts.condition !== false && "Condition changes", (opts.interval ?? 60) > 0 && `Every ${opts.interval ?? 60} seconds`
+  ].filter(Boolean).join(" · ") || "Automatic reevaluation disabled"));
 }
 
 function inheritTheme() {
@@ -344,6 +386,7 @@ $("delete").addEventListener("click", async () => {
   try { await api("delete", {id: editing.id, revision: editRevision}); $("editor").close(); await refresh(); } catch (e) { error("edit-error", e.message); }
 });
 $("new").addEventListener("click", () => openEditor()); $("close").addEventListener("click", () => $("editor").close());
+$("details-close").addEventListener("click", () => $("sync-details").close());
 $("resync").addEventListener("click", async () => {
   const b = $("resync"); b.disabled = true;
   try { await api("resync", {}); error("error", ""); }

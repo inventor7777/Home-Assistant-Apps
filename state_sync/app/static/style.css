@@ -23,11 +23,12 @@ p { margin: 8px 0; }
 .description { color: var(--muted); min-height: 44px; margin: 12px 0; font-size: 13px; }
 .card-heading { flex: 1; min-width: 0; }
 .card-status { display: block; font-size: 12px; font-weight: 600; }
+button.card-status { padding: 7px 10px; background: var(--soft); color: var(--text); }
+button.card-status:not(.idle) { background: color-mix(in srgb, currentColor 8%, var(--surface)); }
 .card-status.synced { color: light-dark(#16803c, #6bce8b); }
 .card-status.alternate { color: light-dark(#2563eb, #93b4ff); }
 .card-status.error { color: var(--error); }
-.card-status.idle { color: var(--muted); }
-.target-status { padding-left: 18px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.card-status.idle { color: var(--text); }
 .card-foot { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 18px; font-size: 12px; }
 button { font: inherit; border: 1px solid transparent; border-radius: 8px; padding: 9px 15px; background: var(--accent); color: var(--on-accent, var(--bg)); cursor: pointer; font-weight: 600; }
 button:hover { filter: brightness(.94); }
@@ -84,6 +85,14 @@ dialog form { display: flex; flex-direction: column; height: min(900px, 92dvh); 
 .editor-top { flex-shrink: 0; border-bottom: 1px solid var(--line); padding: 16px 24px; }
 .editor-content { flex: 1; overflow-y: auto; min-height: 0; padding: 24px; background: var(--bg); }
 dialog::backdrop { background: #0009; }
+.status-popup { width: min(560px, calc(100% - 24px)); max-height: 80dvh; }
+.details-layout { display: flex; flex-direction: column; max-height: 80dvh; }
+.details-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.details-head h2 { min-width: 0; overflow-wrap: anywhere; }
+#details-body { overflow-y: auto; min-height: 0; padding: 12px 20px 20px; overflow-wrap: anywhere; }
+.details-targets { padding-left: 18px; }
+.details-targets li { margin-bottom: 16px; }
+.details-targets pre { white-space: pre-wrap; font-size: 12px; margin: 8px 0; }
 .dialog-head h2 { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .dialog-head #name { min-width: 0; border-color: transparent; background: transparent; font: inherit; padding: 6px 2px; border-radius: 0; }
 .dialog-head #name:hover, .dialog-head #name:focus { border-bottom-color: var(--accent); }
@@ -100,7 +109,7 @@ h1.disconnected { color: var(--error); text-shadow: 0 0 16px color-mix(in srgb, 
 .card-title { flex: 1; padding-block: 8px; }
 .card-heading .card-title { display: block; width: 100%; }
 .card-foot { flex-wrap: wrap; }
-.card-foot > button { margin-left: auto; }
+.card-foot > button:last-child { margin-left: auto; }
 input.switch { appearance: none; position: relative; width: 36px; height: 20px; border: none; border-radius: 12px; padding: 0; background: var(--muted); cursor: pointer; }
 input.switch::before { content: ""; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; background: var(--surface); border-radius: 50%; transition: transform .15s; }
 input.switch:checked { background: var(--accent); }

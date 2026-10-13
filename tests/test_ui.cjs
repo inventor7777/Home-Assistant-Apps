@@ -13,7 +13,8 @@ class Element {
   replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
   focus() { document.activeElement = this; }
-  showModal() { document.activeElement = document.getElementById("name"); }
+  showModal() { this.open = true; document.activeElement = document.getElementById("name"); }
+  close() { this.open = false; }
   addEventListener(type, callback) { this.listeners[type] = callback; }
   setAttribute(key, value) { this.attributes[key] = value; }
   querySelector(tag) { return this.children.find(child => child.tag === tag); }
@@ -64,7 +65,13 @@ assert.equal(card.editButton.attributes["aria-label"], "Edit Porch");
 vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Enforcing", snooze_seconds: 0, targets: {"light.porch": "In sync"}}}})`, context);
 assert.equal(card.status.textContent, "In sync");
 assert.equal(card.status.className, "card-status synced");
-assert.equal(card.statuses.children[0].textContent, "Porch: In sync");
+assert.equal("statuses" in card, false);
+assert.equal(card.status.tag, "button");
+assert.equal(card.status.attributes["aria-haspopup"], "dialog");
+card.status.listeners.click();
+assert.equal(nodes.get("sync-details").open, true);
+assert.equal(nodes.get("details-title").textContent, "Porch");
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].textContent, "In sync");
 assert.equal(card.remaining.hidden, true);
 vm.runInContext("stream.onerror()", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, true);
@@ -78,6 +85,21 @@ for (const [reason, target, tone] of [["Enforcing alternate", "In sync", "altern
   vm.runInContext("applySnapshot({...snapshot, status: {porch: liveStatus}})", context);
   assert.equal(card.status.className, `card-status ${tone}`);
 }
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].textContent, "Overridden by other sync");
+vm.runInContext(`
+  applySnapshot({...snapshot, rules: [{...snapshot.rules[0],
+    conditions: [{entity_id: "binary_sensor.night", value: "on"}],
+    desired: Array.from({length: 5}, (_, i) => ({entity_id: "light.target_" + i, state: "on"})),
+    alternate: [{entity_id: "light.target_0", state: "off"}]}]});
+`, context);
+assert.ok(card.description.textContent.includes("light.target_4"));
+vm.runInContext(`applySnapshot({...snapshot, rules: [{...snapshot.rules[0],
+  desired: [...snapshot.rules[0].desired, {entity_id: "light.target_5", state: "on"}]}]})`, context);
+assert.ok(card.description.textContent.endsWith("6 targets"));
+assert.equal(nodes.get("details-body").querySelectorAll("li").length, 8);
+assert.ok(nodes.get("details-body").querySelectorAll("li")[0].textContent.includes("binary_sensor.night"));
+nodes.get("details-close").listeners.click();
+assert.equal(nodes.get("sync-details").open, false);
 
 vm.runInContext(`
   populate({name: "Mixed", trigger: {type: "entity", entity_id: "binary_sensor.night", value: "on"},
