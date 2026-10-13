@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>State Sync</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="theme.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">HOME ASSISTANT</p><h1>State Sync<span class="mark" aria-hidden="true">↻</span></h1><p class="subtle">Define the state. Keep it there.</p></div><button id="new">+ New sync</button></header>
+    <div class="connection"><span id="connection">Connecting…</span><span id="timezone"></span></div>
+    <p id="error" class="error" role="alert" hidden></p>
+    <div id="overview"></div>
+    <footer>Only active syncs enforce a state. Snoozes clear when the app restarts.</footer>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="form">
+      <div class="dialog-head"><h2 id="editor-title">New sync</h2><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
+      <div class="editor-tabs"><button type="button" id="guided" class="quiet">Form</button><button type="button" id="raw" class="quiet">YAML</button></div>
+      <p id="edit-error" class="error" role="alert" hidden></p>
+      <div id="fields">
+        <div class="grid"><label>Name<input id="name" required maxlength="200" placeholder="Porch lights at night"></label><label>Priority · higher wins<input id="priority" type="number" min="0" max="100" value="50" required></label></div>
+        <label class="check"><input id="enabled" type="checkbox" checked> Enabled</label>
+        <fieldset><legend>When</legend><label>Sync type<select id="type"><option value="entity">Entity state</option><option value="time">Time window</option></select></label><div id="source"></div><div id="times" class="grid" hidden><label>From<input id="start" type="time" value="21:00"></label><label>Until<input id="end" type="time" value="01:00"></label></div><p class="hint">Time windows use Home Assistant’s timezone and can cross midnight.</p></fieldset>
+        <fieldset><legend>Only if</legend><div id="conditions"></div><button type="button" id="add-condition" class="quiet">+ Add condition</button><p class="hint">All conditions must match. These also gate the alternate state.</p></fieldset>
+        <fieldset><legend>Targets</legend><label>Find entities<input id="target-search" type="search" placeholder="Search name, entity ID, or domain" autocomplete="off"></label><div id="selected" class="chips"></div><div id="target-results" class="picker"></div><p class="hint">Select each light individually for predictable priority resolution.</p></fieldset>
+        <fieldset><legend>Desired state</legend><div id="desired"></div></fieldset>
+        <label class="check"><input id="inverted" type="checkbox"> Enforce an alternate state when “When” does not match</label>
+        <fieldset id="alternate-box" hidden><legend>Alternate desired state</legend><div id="alternate"></div></fieldset>
+        <fieldset><legend>Reevaluate</legend><div class="grid"><label class="check"><input id="on-source" type="checkbox" checked> Source changes</label><label class="check"><input id="on-target" type="checkbox" checked> Target changes</label><label class="check"><input id="on-condition" type="checkbox" checked> Condition changes</label><label class="check"><input id="on-interval" type="checkbox" checked> On interval</label></div><label>Interval in seconds<input id="interval" type="number" min="5" max="86400" value="60"></label><p class="hint">Startup, edits, snooze expiry, and time boundaries always reevaluate. Events prompt a state check; they do not blindly run actions.</p></fieldset>
+      </div>
+      <div id="yaml-box" hidden><label>Sync YAML<textarea id="yaml" rows="28" spellcheck="false"></textarea></label><p class="hint">One sync in a YAML list. Custom services need “satisfied” predicates. Use $target to check each selected entity.</p></div>
+      <div class="dialog-actions"><button type="button" id="delete" class="danger" hidden>Delete sync</button><button type="submit">Save sync</button></div>
+    </form>
+  </dialog>
+  <datalist id="entities"></datalist>
+</body>
+</html>
