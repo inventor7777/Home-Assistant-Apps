@@ -21,45 +21,100 @@ function check(text, checked, onChange) { const i = input("checkbox"); i.checked
 function button(text, fn, cls = "quiet") { const b = el("button", text, cls); b.type = "button"; b.addEventListener("click", fn); return b; }
 const friendly = id => entities.find(e => e.entity_id === id)?.attributes?.friendly_name || id;
 
-async function refresh() {
-  snapshot = await api("snapshot");
-  $("connection").textContent = snapshot.connected ? "● Connected to Home Assistant" : "○ Home Assistant disconnected";
-  $("timezone").textContent = snapshot.connected ? `Time windows · ${snapshot.timezone}` : "";
-  error("error", snapshot.error);
-  if (!$("overview").contains(document.activeElement)) renderOverview();
+const overviewCards = new Map();
+let overviewLayout = "", loadingEntities = false;
+function connectionState(connected) {
+  $("app-title").classList.toggle("disconnected", !connected);
+  $("app-title").title = connected ? "" : "Home Assistant connection unavailable";
+  $("app-title").setAttribute("aria-label", connected ? "State Sync" : "State Sync — disconnected");
 }
+function applySnapshot(data) {
+  snapshot = data;
+  connectionState(snapshot.connected);
+  error("error", snapshot.error && snapshot.connected ? snapshot.error : "");
+  renderOverview();
+  if (snapshot.connected && !entities.length && !loadingEntities) {
+    loadingEntities = true;
+    api("entities").then(data => { entities = data; renderOverview(); })
+      .catch(e => error("error", e.message)).finally(() => { loadingEntities = false; });
+  }
+}
+async function refresh() { applySnapshot(await api("snapshot")); }
 function renderOverview() {
-  const root = $("overview"); root.replaceChildren();
-  if (!snapshot.rules.length) { root.append(el("div", "No syncs yet. Create one to keep your devices in the right state.", "empty")); return; }
-  for (const type of ["entity", "time"]) {
-    const rules = snapshot.rules.filter(r => r.trigger.type === type);
-    if (!rules.length) continue;
-    const heading = el("div", undefined, "section-head"); heading.append(el("h2", type === "entity" ? "Entity syncs" : "Time syncs"), el("small", `${rules.length} sync${rules.length === 1 ? "" : "s"}`)); root.append(heading);
-    const cards = el("div", undefined, "cards"); root.append(cards);
-    for (const r of rules) {
-      const s = snapshot.status[r.id] || {reason: "Waiting for evaluation", targets: {}};
-      const card = el("article", undefined, "card"), head = el("div", undefined, "card-head");
-      head.append(button(r.name, () => openEditor(r), "card-title"));
-      head.append(check("Enabled", r.enabled !== false, async event => {
-        const i = event.target; i.disabled = true;
-        try { await api("rule", {id: r.id, revision: snapshot.revision, yaml: JSON.stringify([{...r, enabled: i.checked}])}); await refresh(); }
-        catch (e) { i.checked = !i.checked; error("error", e.message); } finally { i.disabled = false; }
-      }));
-      card.append(head);
-      const when = type === "time" ? `${r.trigger.start} – ${r.trigger.end}` : `${friendly(r.trigger.entity_id)} ${r.trigger.operator || "eq"} ${JSON.stringify(r.trigger.value)}`;
-      card.append(el("p", `${when} → ${r.targets.map(friendly).join(", ")}`, "description"));
-      card.append(el("span", s.reason, "badge"));
-      const statuses = el("ul", undefined, "target-status");
-      for (const [entity, reason] of Object.entries(s.targets)) statuses.append(el("li", `${friendly(entity)}: ${reason}`));
-      card.append(statuses);
-      const foot = el("div", undefined, "card-foot"); foot.append(el("span", `Priority ${r.priority ?? 50}`));
-      const picker = select([["", "Snooze…"], [300, "5 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [21600, "6 hours"], [43200, "12 hours"], [86400, "24 hours"], [0, "Resume now"]], "");
-      picker.setAttribute("aria-label", `Snooze ${r.name}`);
-      picker.addEventListener("change", async () => { try { await api("snooze", {id: r.id, seconds: Number(picker.value)}); await refresh(); } catch (e) { error("error", e.message); } });
-      foot.append(picker); if (s.snooze_seconds > 0) foot.append(el("span", `${Math.ceil(s.snooze_seconds / 60)}m left`));
-      card.append(foot); cards.append(card);
+  const root = $("overview");
+  const layout = JSON.stringify(snapshot.rules.map(r => [r.id, r.trigger.type]));
+  if (layout !== overviewLayout) {
+    overviewLayout = layout; root.replaceChildren(); overviewCards.clear();
+    if (!snapshot.rules.length) root.append(el("div", "No syncs yet. Create one to keep your devices in the right state.", "empty"));
+    for (const type of ["entity", "time"]) {
+      const rules = snapshot.rules.filter(r => r.trigger.type === type);
+      if (!rules.length) continue;
+      const heading = el("div", undefined, "section-head"); heading.append(el("h2", type === "entity" ? "Entity syncs" : "Time syncs"), el("small", `${rules.length} sync${rules.length === 1 ? "" : "s"}`)); root.append(heading);
+      const cards = el("div", undefined, "cards"); root.append(cards);
+      for (const r of rules) {
+        const current = () => snapshot.rules.find(rule => rule.id === r.id);
+        const edit = () => openEditor(current());
+        const card = el("article", undefined, "card"), head = el("div", undefined, "card-head");
+        const title = button(r.name, edit, "card-title");
+        const enabled = check("", r.enabled !== false, async event => {
+          const i = event.target; i.disabled = true;
+          try { await api("rule", {id: r.id, revision: snapshot.revision, yaml: JSON.stringify([{...current(), enabled: i.checked}])}); await refresh(); }
+          catch (e) { i.checked = current().enabled !== false; error("error", e.message); } finally { i.disabled = false; }
+        });
+        const toggle = enabled.querySelector("input"); toggle.setAttribute("role", "switch"); toggle.className = "switch";
+        head.append(title, enabled); card.append(head);
+        const description = el("p", undefined, "description"), badge = el("span", undefined, "badge"), statuses = el("ul", undefined, "target-status");
+        card.append(description, badge, statuses);
+        const picker = select([["", "Snooze…"], [300, "5 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [21600, "6 hours"], [43200, "12 hours"], [86400, "24 hours"], [0, "Resume now"]], "");
+        picker.addEventListener("change", async () => {
+          picker.disabled = true;
+          try { await api("snooze", {id: r.id, seconds: Number(picker.value)}); await refresh(); }
+          catch (e) { error("error", e.message); }
+          finally { picker.value = ""; picker.disabled = false; }
+        });
+        const remaining = el("span"), foot = el("div", undefined, "card-foot");
+        const editButton = button("Edit", edit); foot.append(picker, remaining, editButton);
+        card.append(foot); cards.append(card);
+        overviewCards.set(r.id, {title, toggle, description, badge, statuses, picker, remaining, editButton});
+      }
     }
   }
+  for (const r of snapshot.rules) {
+    const c = overviewCards.get(r.id), s = snapshot.status[r.id] || {reason: "Waiting for evaluation", targets: {}};
+    c.title.textContent = r.name;
+    c.toggle.setAttribute("aria-label", `Enable ${r.name}`);
+    if (!c.toggle.disabled) c.toggle.checked = r.enabled !== false;
+    const when = r.trigger.type === "time" ? `${r.trigger.start} – ${r.trigger.end}` : `${friendly(r.trigger.entity_id)} ${r.trigger.operator || "eq"} ${JSON.stringify(r.trigger.value)}`;
+    c.description.textContent = `${when} → ${r.targets.map(friendly).join(", ")}`;
+    c.badge.textContent = s.reason;
+    c.statuses.replaceChildren(...Object.entries(s.targets).map(([entity, reason]) => el("li", `${friendly(entity)}: ${reason}`)));
+    c.picker.setAttribute("aria-label", `Snooze ${r.name}`);
+    c.remaining.textContent = s.snooze_seconds > 0 ? `${Math.ceil(s.snooze_seconds / 60)}m left` : "";
+    c.remaining.hidden = !s.snooze_seconds;
+    c.editButton.setAttribute("aria-label", `Edit ${r.name}`);
+  }
+}
+
+function inheritTheme() {
+  try {
+    if (window.parent === window) return;
+    const host = window.parent.document.querySelector("home-assistant");
+    if (!host) return;
+    const copy = () => {
+      const styles = window.parent.getComputedStyle(host);
+      const colors = {bg: "primary-background-color", surface: "card-background-color", text: "primary-text-color", muted: "secondary-text-color", line: "divider-color", soft: "secondary-background-color", accent: "primary-color", "on-accent": "text-primary-color", error: "error-color"};
+      for (const [local, ha] of Object.entries(colors)) {
+        const value = styles.getPropertyValue(`--${ha}`).trim();
+        if (value && CSS.supports("color", value)) document.documentElement.style.setProperty(`--${local}`, value);
+        else document.documentElement.style.removeProperty(`--${local}`);
+      }
+      const background = styles.getPropertyValue("--primary-background-color").trim();
+      if (background) document.documentElement.style.colorScheme = host.hass?.themes?.darkMode ? "dark" : "light";
+    };
+    copy();
+    // Ingress is same-origin; HA sets active theme variables on the document root.
+    new MutationObserver(copy).observe(window.parent.document.documentElement, {attributes: true, attributeFilter: ["style"]});
+  } catch (_) { /* Standalone or cross-origin embeds keep the local palette. */ }
 }
 
 function entityPicker(ids, changed, multiple = false) {
@@ -214,7 +269,7 @@ function setMode(raw) {
   if (!raw) $("interval").disabled = !$("on-interval").checked;
 }
 async function openEditor(rule = null) {
-  editing = rule; error("edit-error", ""); $("editor-title").textContent = rule ? "Edit sync" : "New sync"; $("delete").hidden = !rule;
+  editing = rule; error("edit-error", ""); $("editor-title").textContent = rule ? "Edit Sync" : "New Sync"; $("delete").hidden = !rule;
   editRevision = snapshot.revision; $("form").dataset.newId = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, "0")).join("");
   populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
   setMode(false); $("editor").showModal();
@@ -246,11 +301,8 @@ $("type").addEventListener("change", updateType);
 $("add-condition").addEventListener("click", () => $("conditions").append(predicateRow(undefined, true)));
 $("inverted").addEventListener("change", () => $("alternate-box").hidden = !$("inverted").checked);
 $("on-interval").addEventListener("change", () => $("interval").disabled = !$("on-interval").checked);
-async function poll() {
-  try {
-    await refresh();
-    if (snapshot.connected && !entities.length) { entities = await api("entities"); if (!$("overview").contains(document.activeElement)) renderOverview(); }
-  } catch (e) { error("error", e.message); }
-  setTimeout(poll, 3000);
-}
-poll();
+inheritTheme();
+connectionState(false);
+const stream = new EventSource("api/events");
+stream.onmessage = event => applySnapshot(JSON.parse(event.data));
+stream.onerror = () => connectionState(false);

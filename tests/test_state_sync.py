@@ -183,11 +183,11 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(engine.ha.calls), 2)
         self.assertGreater(engine.pending["light.porch_a"][1] - time.monotonic(), 30)
         engine.ha.states["light.porch_a"] = state("on")
-        prev = engine.pending["light.porch_a"]
-        engine.pending["light.porch_a"] = (prev[0], 0, prev[2], prev[3])
+        engine.changed("light.porch_a")
         await engine.reconcile()
         self.assertEqual(len(engine.ha.calls), 2)
         self.assertNotIn("light.porch_a", engine.pending)
+        self.assertEqual(engine.status["porch"]["targets"]["light.porch_a"], "In sync")
 
     async def test_snooze_expiry_disable_and_disconnect(self):
         engine = self.make_engine([rule()])
@@ -316,6 +316,34 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await response.json())["rule"]["desired"]["service"], "light.turn_on")
         response = await self.post("rule", {"yaml": "- id: bad", "revision": self.store.revision})
         self.assertEqual(response.status, 400)
+
+    async def test_live_snapshots_save_device_confirmation_snooze_and_disconnect(self):
+        response = await self.client.get("/api/events")
+        self.addCleanup(response.close)
+        self.assertEqual(response.headers["Content-Type"], "text/event-stream")
+        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+
+        async def update_until(predicate):
+            async with asyncio.timeout(5):
+                while True:
+                    line = await response.content.readline()
+                    if line.startswith(b"data: "):
+                        data = json.loads(line[6:])
+                        if predicate(data):
+                            return data
+
+        initial = await update_until(lambda data: data["connected"])
+        self.assertEqual(initial["rules"], [])
+        await self.post("rule", {"yaml": json.dumps([rule()]), "revision": self.store.revision})
+        await update_until(lambda data: data["status"].get("porch", {}).get("targets", {}).get("light.porch_a") == "In sync")
+        await self.post("snooze", {"id": "porch", "seconds": 300})
+        snoozed = await update_until(lambda data: data["status"].get("porch", {}).get("reason") == "Snoozed")
+        self.assertGreater(snoozed["status"]["porch"]["snooze_seconds"], 290)
+        await self.post("snooze", {"id": "porch", "seconds": 0})
+        await update_until(lambda data: data["status"].get("porch", {}).get("snooze_seconds") == 0)
+        await self.streams[-1].close()
+        disconnected = await update_until(lambda data: not data["connected"])
+        self.assertIn("disconnected", disconnected["status"]["porch"]["reason"])
 
     async def test_incomplete_draft_preview_does_not_weaken_save_validation(self):
         draft = rule(name="", targets=[], trigger={"type": "entity", "entity_id": "", "value": "on"},

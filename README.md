@@ -46,7 +46,7 @@ accent_light: '#2563eb'
 accent_dark: '#93b4ff'
 ```
 
-Automatic light/dark mode follows the browser’s system preference. The two accent options customize those palettes. Raise `retry_seconds` for devices that take longer to report their final state.
+Inside Home Assistant ingress, the UI copies the active HA theme’s background, card, text, divider, primary, and error colors and follows theme changes. Standalone or cross-origin embeds use the built-in light/dark palettes, following the browser’s system preference; the two accent options customize those fallback palettes. Raise `retry_seconds` for devices that take longer to report their final state.
 
 Sync definitions live in `syncs.yaml` under the app’s config directory (`/app_configs/<repository>_state_sync/` from HA; `/config/syncs.yaml` inside the app). Both the form and YAML editor update that file atomically. Manual edits reload within about a second. Invalid files pause all enforcement until fixed; the app never overwrites them. UI saves reject stale edits instead of replacing someone else’s changes. YAML comments/formatting are normalized when the UI saves; avoid editing manually at the exact same time as saving in the UI.
 

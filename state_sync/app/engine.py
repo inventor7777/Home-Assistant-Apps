@@ -13,8 +13,9 @@ LOG = logging.getLogger(__name__)
 
 
 class Engine:
-    def __init__(self, store, ha, retry_seconds=10):
+    def __init__(self, store, ha, retry_seconds=10, updated=lambda: None):
         self.store, self.ha, self.retry_seconds = store, ha, retry_seconds
+        self.updated = updated
         self.snoozes, self.status, self.pending = {}, {}, {}
         self.events = set()
         self.force = True
@@ -84,9 +85,6 @@ class Engine:
             previous = self.pending.get(entity)
             retry_due = previous and previous[0] == fingerprint and mono >= previous[1]
             target_status = self.status[r["id"]]["targets"]
-            if previous and previous[0] == fingerprint and mono < previous[1]:
-                target_status[entity] = previous[2]
-                continue
             commands = action_commands(entity, action, self.ha.states)
             if commands is None:
                 target_status[entity] = "Unknown/unavailable — skipped"
@@ -95,6 +93,9 @@ class Engine:
             if not commands:
                 target_status[entity] = "In sync"
                 self.pending.pop(entity, None)
+                continue
+            if previous and previous[0] == fingerprint and mono < previous[1]:
+                target_status[entity] = previous[2]
                 continue
             if entity not in affected and not retry_due:
                 target_status[entity] = "Out of sync — waiting for enabled reevaluation"
@@ -126,3 +127,4 @@ class Engine:
             if self.store.reload():
                 self.changed()
             await self.reconcile()
+            self.updated()

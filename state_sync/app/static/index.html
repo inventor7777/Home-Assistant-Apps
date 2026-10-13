@@ -8,15 +8,14 @@
 </head>
 <body>
   <main>
-    <header><h1>State Sync</h1><button id="new">+ New sync</button></header>
-    <div class="connection"><span id="connection">Connecting…</span><span id="timezone"></span></div>
+    <header><h1 id="app-title">State Sync</h1><button id="new">+ New Sync</button></header>
     <p id="error" class="error" role="alert" hidden></p>
     <div id="overview"></div>
   </main>
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="form">
       <div class="editor-top">
-        <div class="dialog-head"><h2 id="editor-title">New sync</h2><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
+        <div class="dialog-head"><h2 id="editor-title">New Sync</h2><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
         <div class="editor-tabs"><button type="button" id="guided" class="quiet" aria-pressed="true">Form</button><button type="button" id="raw" class="quiet" aria-pressed="false">YAML</button></div>
       </div>
       <div class="editor-content">

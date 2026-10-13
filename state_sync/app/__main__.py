@@ -38,17 +38,50 @@ def create_app(store, options, api, token, development=False):
             response = web.json_response({"error": str(exc)}, status=400)
         except OSError:
             response = web.json_response({"error": "Unable to read/write sync file; check app logs and permissions"}, status=500)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
-        response.headers["Cache-Control"] = "no-store"
         return response
 
     app = web.Application(middlewares=[guard], client_max_size=1024 * 1024)
 
+    async def response_headers(request, response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+        response.headers["Cache-Control"] = "no-store"
+
+    app.on_response_prepare.append(response_headers)
+    subscribers = set()
+    last_snapshot = None
+
+    async def close_streams(app):
+        for queue in subscribers:
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(None)
+
+    app.on_shutdown.append(close_streams)
+
+    def snapshot_data():
+        ha, engine = app[HA], app[ENGINE]
+        return {
+            "rules": store.rules, "revision": store.revision, "status": engine.status,
+            "error": store.error or ha.error, "connected": ha.connected,
+            "timezone": str(ha.zone),
+        }
+
+    def publish():
+        nonlocal last_snapshot
+        data = json.dumps(snapshot_data())
+        if data == last_snapshot:
+            return
+        last_snapshot = data
+        for queue in subscribers:
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(data)
+
     async def lifecycle(app):
         async with aiohttp.ClientSession() as session:
             ha = HomeAssistant(session, api, token, lambda entity: engine.changed(entity))
-            engine = Engine(store, ha, options.get("retry_seconds", 10))
+            engine = Engine(store, ha, options.get("retry_seconds", 10), publish)
             app[HA], app[ENGINE] = ha, engine
             tasks = [asyncio.create_task(ha.run()), asyncio.create_task(engine.run())]
             yield
@@ -61,12 +94,28 @@ def create_app(store, options, api, token, development=False):
     app.cleanup_ctx.append(lifecycle)
 
     async def snapshot(request):
-        ha, engine = app[HA], app[ENGINE]
-        return web.json_response({
-            "rules": store.rules, "revision": store.revision, "status": engine.status,
-            "error": store.error or ha.error, "connected": ha.connected,
-            "timezone": str(ha.zone),
-        })
+        return web.json_response(snapshot_data())
+
+    async def events(request):
+        response = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+        queue = asyncio.Queue(maxsize=1)
+        subscribers.add(queue)
+        queue.put_nowait(json.dumps(snapshot_data()))
+        try:
+            await response.prepare(request)
+            while True:
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=15)
+                    if data is None:
+                        break
+                    await response.write(f"data: {data}\n\n".encode())
+                except TimeoutError:
+                    await response.write(b": heartbeat\n\n")
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            subscribers.discard(queue)
+        return response
 
     async def entities(request):
         return web.json_response(sorted(app[HA].states.values(), key=lambda s: s["entity_id"]))
@@ -132,7 +181,7 @@ def create_app(store, options, api, token, development=False):
         return web.FileResponse(STATIC / name)
 
     app.add_routes([
-        web.get("/api/snapshot", snapshot), web.get("/api/entities", entities),
+        web.get("/api/snapshot", snapshot), web.get("/api/events", events), web.get("/api/entities", entities),
         web.get("/api/rule/{id}", rule_yaml), web.post("/api/rule", edit),
         web.post("/api/preview", preview),
         web.post("/api/delete", delete), web.post("/api/snooze", snooze),

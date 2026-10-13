@@ -73,6 +73,7 @@ class HomeAssistant:
                 self.error = f"HA disconnected ({type(exc).__name__}); reconnecting"
             self.connected = False
             self.error = self.error or "HA disconnected; reconnecting"
+            self.changed(None)
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)
 
