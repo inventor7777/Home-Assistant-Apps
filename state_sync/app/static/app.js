@@ -343,6 +343,12 @@ $("delete").addEventListener("click", async () => {
   try { await api("delete", {id: editing.id, revision: editRevision}); $("editor").close(); await refresh(); } catch (e) { error("edit-error", e.message); }
 });
 $("new").addEventListener("click", () => openEditor()); $("close").addEventListener("click", () => $("editor").close());
+$("resync").addEventListener("click", async () => {
+  const b = $("resync"); b.disabled = true;
+  try { await api("resync", {}); error("error", ""); }
+  catch (e) { error("error", e.message); }
+  finally { b.disabled = false; }
+});
 $("type").addEventListener("change", updateType);
 $("add-condition").addEventListener("click", () => $("conditions").append(predicateRow(undefined, true)));
 $("inverted").addEventListener("change", updateAlternate);

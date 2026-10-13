@@ -18,6 +18,7 @@ class Engine:
         self.updated = updated
         self.snoozes, self.status, self.pending = {}, {}, {}
         self.events = set()
+        self.rule_changes = set()
         self.force = True
         self.wake = asyncio.Event()
         self.intervals = {}
@@ -35,7 +36,14 @@ class Engine:
             self.snoozes[ident] = time.monotonic() + seconds
         else:
             self.snoozes.pop(ident, None)
-        self.changed()
+        self.rule_changes.add(ident)
+        self.wake.set()
+
+    def config_changed(self, previous):
+        before = {r["id"]: r for r in previous}
+        after = {r["id"]: r for r in self.store.rules}
+        self.rule_changes.update(ident for ident in before.keys() | after.keys() if before.get(ident) != after.get(ident))
+        self.wake.set()
 
     def winners(self, now, monotonic):
         winners, status = {}, {}
@@ -58,13 +66,15 @@ class Engine:
     async def reconcile(self):
         mono, now = time.monotonic(), datetime.now(self.ha.zone)
         events, force = self.events, self.force
+        rule_changes = self.rule_changes
         self.events, self.force = set(), False
+        self.rule_changes = set()
         minute = now.strftime("%Y-%m-%d %H:%M %z")
         time_changed, self.minute = minute != self.minute, minute
         expired = [key for key, until in self.snoozes.items() if until <= mono]
         for key in expired:
             del self.snoozes[key]
-        force = force or bool(expired)
+        rule_changes.update(expired)
         if not self.ha.connected or self.store.error:
             self.status = {r["id"]: {"reason": "Paused — configuration error" if self.store.error else "Paused — HA disconnected", "targets": {}, "snooze_seconds": 0} for r in self.store.rules}
             return
@@ -97,7 +107,7 @@ class Engine:
             if previous and previous[0] == fingerprint and mono < previous[1]:
                 target_status[entity] = previous[2]
                 continue
-            if entity not in affected and not retry_due:
+            if entity not in affected and r["id"] not in rule_changes and not retry_due:
                 target_status[entity] = "Out of sync — waiting for enabled reevaluation"
                 self.pending.pop(entity, None)
                 continue
@@ -124,7 +134,8 @@ class Engine:
             except TimeoutError:
                 pass
             self.wake.clear()
+            previous = self.store.rules
             if self.store.reload():
-                self.changed()
+                self.config_changed(previous)
             await self.reconcile()
             self.updated()

@@ -135,16 +135,18 @@ def create_app(store, options, api, token, development=False):
             updated = [rule if r["id"] == old_id else r for r in store.rules]
         else:
             updated = [*store.rules, rule]
+        previous = store.rules
         store.save(updated, body.get("revision"))
-        app[ENGINE].changed()
+        app[ENGINE].config_changed(previous)
         return web.json_response({"ok": True})
 
     async def delete(request):
         body = await request.json()
         require(isinstance(body, dict) and isinstance(body.get("id"), str), "Expected sync ID")
         require(any(r["id"] == body["id"] for r in store.rules), "Sync no longer exists")
+        previous = store.rules
         store.save([r for r in store.rules if r["id"] != body["id"]], body.get("revision"))
-        app[ENGINE].changed()
+        app[ENGINE].config_changed(previous)
         return web.json_response({"ok": True})
 
     async def snooze(request):
@@ -153,6 +155,10 @@ def create_app(store, options, api, token, development=False):
         require(type(body.get("seconds")) is int and body["seconds"] in {0, 300, 1800, 3600, 21600, 43200, 86400}, "Invalid snooze duration")
         require(any(r["id"] == body.get("id") for r in store.rules), "Sync no longer exists")
         app[ENGINE].snooze(body["id"], body["seconds"])
+        return web.json_response({"ok": True})
+
+    async def resync(request):
+        app[ENGINE].changed()
         return web.json_response({"ok": True})
 
     async def rule_yaml(request):
@@ -184,7 +190,7 @@ def create_app(store, options, api, token, development=False):
         web.get("/api/snapshot", snapshot), web.get("/api/events", events), web.get("/api/entities", entities),
         web.get("/api/rule/{id}", rule_yaml), web.post("/api/rule", edit),
         web.post("/api/preview", preview),
-        web.post("/api/delete", delete), web.post("/api/snooze", snooze),
+        web.post("/api/delete", delete), web.post("/api/snooze", snooze), web.post("/api/resync", resync),
         web.get("/theme.css", theme), web.get("/", asset), web.get("/{name}", asset),
     ])
     return app

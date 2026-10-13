@@ -26,9 +26,11 @@ This first version is **experimental**. Automated tests use a simulated HA serve
 - Sources/conditions that are missing, unknown, or unavailable skip the sync by default, including inversion. Each predicate can instead treat that case as matching or not matching. An unavailable target is always skipped.
 - Time windows use HA’s timezone, include their start, exclude their end, and can cross midnight. Equal start/end times are rejected. Time windows repeat daily; no weekday/calendar system.
 - Startup, reconnection, valid config edits, and snooze expiry reconcile immediately. Time rules reevaluate each minute, including boundaries. Source, target, condition, and interval reevaluation can be individually disabled.
-- When a rule requests reevaluation, all active rules sharing its targets participate in arbitration. This prevents an event for a lower-priority rule from bypassing a higher-priority rule.
+- When a configured event requests reevaluation, all active rules sharing its targets participate in arbitration. This prevents an event for a lower-priority rule from bypassing a higher-priority rule.
 - Service calls wait at least `retry_seconds` before checking for another correction. Light transitions extend this wait. Failed calls back off up to five minutes. Pending corrections are rechecked against current conditions and priority before retrying.
 - No active rule means no action: State Sync does not restore an earlier state after a sync stops enforcing. The optional alternate state supplies that behavior explicitly.
+- Saving, toggling, or resuming a sync reevaluates only that sync; other syncs wait for their configured events, time boundaries, intervals, or pending retries. Deleting a sync does not force another sync to enforce immediately.
+- **Resync All** requests a global reevaluation regardless of event settings. Disabled and snoozed syncs stay paused; conditions, priorities, and retry cooldowns still apply.
 - Disable switches persist in YAML. Snoozes (5m/30m/1h/6h/12h/24h) are in memory and clear on restart. A different active sync can still control a snoozed sync’s targets.
 
 Basic adapters support lights, switches, input booleans, fans, humidifiers, climate, covers, locks, numbers/input numbers, and selects/input selects. Other domains use custom service calls. The editor shows fields for each domain; individual integrations may not support every field or value. HA validates service calls, and failures appear in the overview.

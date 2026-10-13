@@ -16,7 +16,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "state_sync"))
-from app.__main__ import create_app, HA
+from app.__main__ import create_app, HA, ENGINE
 from app.engine import Engine
 from app.ha import HomeAssistant
 from app.model import action_commands, active_action, event_affects, predicate, validate_rules
@@ -199,6 +199,74 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
     def make_engine(self, rules):
         return Engine(SimpleNamespace(rules=rules, error=None), FakeHA())
 
+    async def test_configuration_and_snooze_changes_do_not_trigger_unrelated_rules(self):
+        opts = {"source": True, "condition": True, "target": False, "interval": 0}
+        engine = self.make_engine([
+            rule("toggle", enabled=False, desired=[{"entity_id": "light.porch_a", "state": "on"}], reevaluate=opts),
+            rule("passive", desired=[{"entity_id": "light.porch_b", "state": "on"}], reevaluate=opts),
+            rule("condition_only", desired=[{"entity_id": "switch.other", "state": "on"}],
+                 conditions=[{"entity_id": "switch.gate", "value": "off"}],
+                 reevaluate={**opts, "source": False}),
+        ])
+        engine.ha.states["light.porch_a"] = state("on")
+        engine.ha.states["light.porch_b"] = state("on")
+        engine.ha.states["switch.other"] = state("on")
+        engine.ha.states["switch.gate"] = state("off")
+        await engine.reconcile()
+        engine.ha.states["light.porch_a"] = state("off")
+        engine.ha.states["light.porch_b"] = state("off")
+        engine.ha.states["switch.other"] = state("off")
+        previous = copy.deepcopy(engine.store.rules)
+        engine.store.rules[0]["enabled"] = True
+        engine.config_changed(previous)
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls, [("light.turn_on", "light.porch_a", {})])
+        previous = copy.deepcopy(engine.store.rules)
+        engine.store.rules[0]["enabled"] = False
+        engine.config_changed(previous)
+        await engine.reconcile()
+        engine.snooze("toggle", 300)
+        await engine.reconcile()
+        engine.snooze("toggle", 0)
+        await engine.reconcile()
+        engine.snooze("toggle", 300)
+        engine.snoozes["toggle"] = 0
+        await engine.reconcile()
+        self.assertEqual(len(engine.ha.calls), 1)
+        self.assertIn("waiting for enabled reevaluation", engine.status["passive"]["targets"]["light.porch_b"])
+        engine.changed("binary_sensor.night")
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls[-1], ("light.turn_on", "light.porch_b", {}))
+        self.assertEqual(len(engine.ha.calls), 2)
+        engine.changed("switch.gate")
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls[-1], ("switch.turn_on", "switch.other", {}))
+
+    async def test_config_changes_do_not_enforce_unchanged_winner_on_shared_target(self):
+        opts = {"source": True, "condition": True, "target": False, "interval": 0}
+        engine = self.make_engine([
+            rule("higher", 80, desired=[{"entity_id": "light.porch_a", "state": "on"}], reevaluate=opts),
+            rule("lower", enabled=False, desired=[{"entity_id": "light.porch_a", "state": "off"}], reevaluate=opts),
+        ])
+        engine.ha.states["light.porch_a"] = state("on")
+        await engine.reconcile()
+        engine.ha.states["light.porch_a"] = state("off")
+        previous = copy.deepcopy(engine.store.rules)
+        engine.store.rules[1]["enabled"] = True
+        engine.config_changed(previous)
+        await engine.reconcile()
+        self.assertFalse(engine.ha.calls)
+        self.assertIn("Overridden", engine.status["lower"]["targets"]["light.porch_a"])
+        previous = engine.store.rules
+        engine.store.rules = engine.store.rules[1:]
+        engine.ha.states["light.porch_a"] = state("on")
+        engine.config_changed(previous)
+        await engine.reconcile()
+        self.assertFalse(engine.ha.calls)
+        engine.changed("binary_sensor.night")
+        await engine.reconcile()
+        self.assertEqual(engine.ha.calls, [("light.turn_off", "light.porch_a", {})])
+
     async def test_per_entity_settings_independent_alternate_and_priority(self):
         r = rule(desired=[{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 30}},
                           {"entity_id": "light.porch_b", "state": "on", "data": {"brightness_pct": 80}}],
@@ -354,6 +422,40 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.calls), 2)
         response = await self.post("rule", {"id": "porch", "yaml": json.dumps([rule()]), "revision": "stale"})
         self.assertEqual(response.status, 409)
+
+    async def test_toggle_endpoint_does_not_force_source_only_sync(self):
+        opts = {"source": True, "condition": True, "target": False, "interval": 0}
+        toggle = rule("toggle", enabled=False, desired=[{"entity_id": "light.porch_a", "state": "on"}], reevaluate=opts)
+        passive = rule("passive", desired=[{"entity_id": "light.porch_b", "state": "off"}], reevaluate=opts)
+        for r in (toggle, passive):
+            response = await self.post("rule", {"yaml": json.dumps([r]), "revision": self.store.revision})
+            self.assertEqual(response.status, 200)
+        await self.until(lambda: "passive" in self.client.app[ENGINE].status)
+        self.client.app[HA].states["light.porch_b"] = state("on")
+        toggle["enabled"] = True
+        response = await self.post("rule", {"id": "toggle", "yaml": json.dumps([toggle]), "revision": self.store.revision})
+        self.assertEqual(response.status, 200)
+        await self.until(lambda: len(self.calls) >= 1)
+        await asyncio.sleep(.05)
+        self.assertEqual([body["entity_id"] for _, body in self.calls], ["light.porch_a"])
+
+    async def test_resync_all_ignores_event_settings_but_preserves_pauses(self):
+        opts = {"source": False, "target": False, "condition": False, "interval": 0}
+        for ident, entity, enabled in [("a", "light.porch_a", True), ("b", "light.porch_b", True),
+                                       ("disabled", "light.disabled", False), ("snoozed", "light.snoozed", True)]:
+            r = rule(ident, enabled=enabled, desired=[{"entity_id": entity, "state": "off"}], reevaluate=opts)
+            response = await self.post("rule", {"yaml": json.dumps([r]), "revision": self.store.revision})
+            self.assertEqual(response.status, 200)
+        await self.post("snooze", {"id": "snoozed", "seconds": 300})
+        await self.until(lambda: self.client.app[ENGINE].status.get("snoozed", {}).get("reason") == "Snoozed")
+        for entity in ("light.porch_a", "light.porch_b", "light.disabled", "light.snoozed"):
+            self.client.app[HA].states[entity] = state("on")
+        response = await self.client.post("/api/resync", json={})
+        self.assertEqual(response.status, 403)
+        response = await self.post("resync", {})
+        self.assertEqual(response.status, 200)
+        await self.until(lambda: len(self.calls) >= 2)
+        self.assertEqual({body["entity_id"] for _, body in self.calls}, {"light.porch_a", "light.porch_b"})
 
     async def test_save_per_entity_actions_and_reject_sensor_target(self):
         r = rule(desired=[{"entity_id": "light.porch_a"}, {"entity_id": "light.porch_b", "state": "off"}],
