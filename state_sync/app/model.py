@@ -147,7 +147,7 @@ def _validate_rules(rules, draft=False):
         else:
             mapping(t, {"type", "start", "end"}, "time trigger")
             require(t.get("type") == "time", "Trigger type must be entity/time")
-            require(clock(t.get("start")) != clock(t.get("end")), "Start and end must differ")
+            require(clock(t.get("start")) != clock(t.get("end")) or draft, "Start and end must differ")
         conditions = r.get("conditions", [])
         require(isinstance(conditions, list), "Conditions must be a list")
         for p in conditions:

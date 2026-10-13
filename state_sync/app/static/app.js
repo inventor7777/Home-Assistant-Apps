@@ -328,7 +328,7 @@ function populate(rule) {
   if (!editing && rule.id) $("form").dataset.newId = rule.id;
   $("name").value = rule.name ?? ""; $("priority").value = rule.priority ?? 50; $("enabled").checked = rule.enabled !== false;
   $("type").value = rule.trigger.type; $("source").replaceChildren(predicateRow(rule.trigger.type === "entity" ? rule.trigger : undefined));
-  $("start").value = rule.trigger.start || "21:00"; $("end").value = rule.trigger.end || "01:00"; updateType();
+  $("start").value = rule.trigger.start || "00:00"; $("end").value = rule.trigger.end || "00:00"; updateType();
   $("conditions").replaceChildren(...(rule.conditions || []).map(p => predicateRow(p, true)));
   populateState(rule, "desired"); populateState(rule, "alternate");
   $("inverted").checked = !!rule.alternate; updateAlternate();

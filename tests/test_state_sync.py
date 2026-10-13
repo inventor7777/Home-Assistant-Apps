@@ -67,6 +67,10 @@ class ModelTests(unittest.TestCase):
         r = rule(trigger={"type": "time", "start": "21:00", "end": "01:00"})
         for hour, minute, active in [(20, 59, False), (21, 0, True), (0, 59, True), (1, 0, False)]:
             self.assertEqual(active_action(r, {}, datetime(2026, 10, 12, hour, minute))[0] is not None, active)
+        draft = rule(trigger={"type": "time", "start": "00:00", "end": "00:00"})
+        validate_rules([draft], draft=True)
+        with self.assertRaises(ValueError):
+            validate_rules([draft])
 
     def test_unknown_does_not_invert_and_conditions_gate_both(self):
         r = rule(alternate=[{"entity_id": "light.porch_a", "state": "off"}], conditions=[{"entity_id": "switch.manual", "value": "off"}])
