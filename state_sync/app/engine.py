@@ -48,7 +48,7 @@ class Engine:
             status[r["id"]] = info
             if action is not None:
                 # shortcut: only explicit IDs compete, expand groups if group/member conflicts must be resolved.
-                for e, target_action in action_targets(r, action):
+                for e, target_action in action_targets(action):
                     if e in winners:
                         info["targets"][e] = f"Overridden by {winners[e][0]['name']}"
                     else:

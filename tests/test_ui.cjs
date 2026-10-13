@@ -13,6 +13,7 @@ class Element {
   replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
   focus() { document.activeElement = this; }
+  showModal() { document.activeElement = document.getElementById("name"); }
   addEventListener(type, callback) { this.listeners[type] = callback; }
   setAttribute(key, value) { this.attributes[key] = value; }
   querySelector(tag) { return this.children.find(child => child.tag === tag); }
@@ -31,6 +32,7 @@ const context = vm.createContext({
   document, window: {parent: {document: {documentElement: parentRoot, querySelector: () => host}, getComputedStyle: () => ({getPropertyValue: key => palette[key] || ""})}},
   CSS: {supports: () => true}, MutationObserver: class {constructor(callback) { themeChanged = callback; } observe(element) { observed = element; }},
   EventSource: class {constructor(url) { this.url = url; }},
+  crypto: require("node:crypto").webcrypto,
 });
 vm.runInContext(fs.readFileSync("state_sync/app/static/app.js", "utf8"), context);
 assert.equal(observed, parentRoot);
@@ -42,25 +44,36 @@ assert.equal(document.documentElement.style["--bg"], "#654321");
 vm.runInContext(`
   entities = [{entity_id: "light.porch", attributes: {friendly_name: "Porch"}}];
   applySnapshot({connected: true, rules: [{id: "porch", name: "Porch", enabled: true,
-    trigger: {type: "time", start: "18:00", end: "06:00"}, targets: ["light.porch"]}],
+    trigger: {type: "time", start: "18:00", end: "06:00"}, desired: [{entity_id: "light.porch", state: "on"}]}],
     status: {porch: {reason: "Active", targets: {"light.porch": "Command sent"}}}});
 `, context);
 const card = vm.runInContext('overviewCards.get("porch")', context);
 document.activeElement = card.picker; card.picker.value = "300";
 vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Snoozed", snooze_seconds: 300, targets: {}}}})`, context);
 assert.equal(vm.runInContext('overviewCards.get("porch")', context), card);
-assert.equal(card.badge.textContent, "Snoozed");
+assert.equal(card.status.textContent, "Snoozed");
+assert.equal(card.status.className, "card-status idle");
 assert.equal(card.remaining.textContent, "5m left");
 assert.equal(card.picker.value, "300");
 assert.equal(card.toggle.attributes.role, "switch");
 assert.equal(card.editButton.attributes["aria-label"], "Edit Porch");
-vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Active", snooze_seconds: 0, targets: {"light.porch": "In sync"}}}})`, context);
+vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Enforcing", snooze_seconds: 0, targets: {"light.porch": "In sync"}}}})`, context);
+assert.equal(card.status.textContent, "In sync");
+assert.equal(card.status.className, "card-status synced");
 assert.equal(card.statuses.children[0].textContent, "Porch: In sync");
 assert.equal(card.remaining.hidden, true);
 vm.runInContext("stream.onerror()", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, true);
 vm.runInContext("applySnapshot(snapshot)", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, false);
+for (const [reason, target, tone] of [["Enforcing alternate", "In sync", "alternate"],
+  ["Enforcing alternate", "Command sent — waiting for device", "error"],
+  ["Enforcing", "Unknown/unavailable — skipped", "error"],
+  ["Enforcing", "Overridden by other sync", "error"]]) {
+  context.liveStatus = {reason, targets: {"light.porch": target}};
+  vm.runInContext("applySnapshot({...snapshot, status: {porch: liveStatus}})", context);
+  assert.equal(card.status.className, `card-status ${tone}`);
+}
 
 vm.runInContext(`
   populate({name: "Mixed", trigger: {type: "entity", entity_id: "binary_sensor.night", value: "on"},
@@ -73,16 +86,11 @@ assert.equal(edited[0].desired[0].data.brightness_pct, 30);
 assert.equal(edited[0].desired[1].state, "off");
 assert.equal(edited[0].alternate[0].entity_id, "climate.house");
 assert.equal(edited[0].alternate[0].data.temperature, 21);
+assert.equal(nodes.get("alternate-section").attributes.collapsed, false);
 assert.equal("targets" in edited[0], false);
 nodes.get("desired").children[0].children[0].children[1].listeners.click();
 assert.equal(nodes.get("desired").children.length, 1);
 assert.equal(nodes.get("alternate").children.length, 1);
-
-vm.runInContext(`populate({name: "Legacy", trigger: {type: "entity", entity_id: "binary_sensor.night", value: "on"},
-  targets: ["light.porch", "light.second"], desired: {state: "on", data: {brightness_pct: 80}}, alternate: {state: "off"}})`, context);
-edited = JSON.parse(vm.runInContext("readForm().yaml", context));
-assert.equal(edited[0].desired[1].data.brightness_pct, 80);
-assert.equal(edited[0].alternate[1].entity_id, "light.second");
 
 vm.runInContext(`entities = [{entity_id: "binary_sensor.night", attributes: {friendly_name: "Night sensor"}},
   {entity_id: "light.night", attributes: {friendly_name: "Night light"}}]`, context);
@@ -93,7 +101,7 @@ assert.equal(targetSearch.children[2].children.length, 1);
 assert.equal(targetSearch.children[2].children[0].textContent, "Night light");
 targetSearch.children[2].children[0].listeners.click();
 assert.equal(nodes.get("desired").children.at(-1).entity, "light.night");
-assert.equal(nodes.get("alternate").children.length, 2);
+assert.equal(nodes.get("alternate").children.length, 1);
 const sourceSearch = nodes.get("source").firstChild.children[0].children[2];
 sourceSearch.children[0].children[0].value = "night";
 sourceSearch.children[0].children[0].listeners.input();
@@ -112,12 +120,18 @@ context.fetch = async (path, options) => {
 };
 vm.runInContext(`
   $("form").dataset.newId = "draft";
-  populate({name: "", enabled: false, trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
+  populate({name: "", enabled: false, trigger: {type: "entity", entity_id: "", value: "on"}, desired: []});
   setMode(false);
 `, context);
 assert.equal(nodes.get("name").required, true);
 assert.equal(nodes.get("enabled").disabled, false);
 assert.equal(nodes.get("mode-toggle").textContent, "YAML");
+assert.equal(nodes.get("alternate-section").attributes.collapsed, true);
+nodes.get("inverted").checked = true;
+nodes.get("inverted").listeners.change();
+assert.equal(nodes.get("alternate-section").attributes.collapsed, false);
+nodes.get("inverted").checked = false;
+nodes.get("inverted").listeners.change();
 (async () => {
   await nodes.get("mode-toggle").listeners.click();
   assert.equal(nodes.get("mode-toggle").textContent, "Form");
@@ -138,5 +152,8 @@ assert.equal(nodes.get("mode-toggle").textContent, "YAML");
   assert.equal(nodes.get("mode-toggle").textContent, "YAML");
   assert.equal(nodes.get("mode-toggle").disabled, false);
   assert.equal(nodes.get("edit-error").textContent, "Invalid YAML");
+  context.fetch = async () => ({ok: true, json: async () => []});
+  await vm.runInContext("openEditor()", context);
+  assert.equal(document.activeElement, nodes.get("close"));
   console.log("UI updates, HA theme, and editor mode checks passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

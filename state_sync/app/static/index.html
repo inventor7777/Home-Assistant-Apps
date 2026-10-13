@@ -17,7 +17,7 @@
       <div class="editor-top">
         <div class="dialog-head">
           <h2 id="editor-title"><span id="editor-verb">New</span><input id="name" aria-label="Sync name" required maxlength="200" placeholder="Sync"></h2>
-          <div class="editor-controls"><button type="button" id="mode-toggle" class="quiet" aria-label="Switch to YAML editor">YAML</button><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
+          <div class="editor-controls"><button type="button" id="mode-toggle" class="quiet" aria-label="Switch to YAML editor">YAML</button><button type="button" id="close" class="quiet" aria-label="Close editor" autofocus>✕</button></div>
         </div>
       </div>
       <div class="editor-content">
@@ -38,7 +38,7 @@
             <div id="desired"></div>
             <div id="add-desired"></div>
           </section>
-          <section class="editor-section" aria-labelledby="alternate-title">
+          <section id="alternate-section" class="editor-section collapsed" aria-labelledby="alternate-title">
             <h3 id="alternate-title" class="alternate-heading">Alternate State<label class="check"><input id="inverted" type="checkbox"> Enabled</label></h3>
             <div id="alternate-box" hidden><div id="alternate"></div><div id="add-alternate"></div></div>
           </section>

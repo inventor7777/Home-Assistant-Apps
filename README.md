@@ -20,7 +20,7 @@ This first version is **experimental**. Automated tests use a simulated HA serve
 
 ## Behavior
 
-- Select multiple explicit entity targets, such as both porch lights. Each receives the same desired state.
+- Select multiple explicit entity targets, such as both porch lights. Each has its own desired-state settings.
 - Priority is resolved **per target entity**. Highest priority wins; ties use saved rule order. The winning rule supplies that entity’s entire desired state. Lower-priority attributes are not merged.
 - A condition gates both the normal and alternate desired state. Every condition must match.
 - Sources/conditions that are missing, unknown, or unavailable skip the sync by default, including inversion. Each predicate can instead treat that case as matching or not matching. An unavailable target is always skipped.
@@ -99,7 +99,7 @@ trigger:
 
 Predicates support `operator: eq|ne|gt|lt|ge|le`, optional `attribute`, and numeric `tolerance`. State strings such as `'on'` and `'off'` must be quoted in YAML. Numeric comparisons use numeric values. Missing attributes skip the sync by default. `interval: 0` disables interval reevaluation.
 
-Desired State and Alternate State each have independent entity lists and per-entity settings. Entities omitted from the active list are left alone. Conditions gate both lists; an unknown source skips both. The same entity can appear once in each list. Existing shared-action YAML (`targets` plus a single `desired`/`alternate` mapping) still loads; saving it in the form expands the shared settings into per-entity entries.
+Desired State and Alternate State each have independent entity lists and per-entity settings. Entities omitted from the active list are left alone. Conditions gate both lists; an unknown source skips both. The same entity can appear once in each list.
 
 Custom actions replace an individual entity’s state settings with a service and an explicit list of already-satisfied predicates:
 

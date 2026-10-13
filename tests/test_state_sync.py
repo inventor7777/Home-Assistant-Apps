@@ -30,7 +30,8 @@ def state(value, **attrs):
 def rule(ident="porch", priority=50, **overrides):
     return {"id": ident, "name": ident, "priority": priority,
             "trigger": {"type": "entity", "entity_id": "binary_sensor.night", "value": "on"},
-            "targets": ["light.porch_a", "light.porch_b"], "desired": {"state": "on"}, **overrides}
+            "desired": [{"entity_id": "light.porch_a", "state": "on"},
+                        {"entity_id": "light.porch_b", "state": "on"}], **overrides}
 
 
 class ModelTests(unittest.TestCase):
@@ -38,7 +39,6 @@ class ModelTests(unittest.TestCase):
         r = rule(desired=[{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 30}},
                           {"entity_id": "climate.house", "state": "heat", "data": {"temperature": 21}}],
                  alternate=[{"entity_id": "switch.other", "state": "off"}])
-        del r["targets"]
         validate_rules([r])
         self.assertTrue(event_affects(r, "switch.other"))
         custom = {"entity_id": "light.porch_a", "service": "light.turn_on", "satisfied": [{"entity_id": "sensor.verify", "value": "ok"}]}
@@ -52,10 +52,12 @@ class ModelTests(unittest.TestCase):
         validate_rules([{**r, "desired": [], "alternate": []}], draft=True)
         with self.assertRaises(ValueError):
             validate_rules([{**r, "targets": ["light.porch_a"]}])
+        with self.assertRaises(ValueError):
+            validate_rules([{**r, "desired": {"state": "on"}}])
 
     def test_validation_and_multi_targets(self):
         validate_rules([rule()])
-        for change in [{"priority": 101}, {"targets": []}, {"desired": {"state": True}}, {"desired": {"state": "on", "data": {"brightness_pct": 0}}}, {"unexpected": 1}, {"trigger": {"type": "entity", "entity_id": "x.y", "value": "on", "operator": []}}]:
+        for change in [{"priority": 101}, {"desired": []}, {"desired": [{"entity_id": "light.porch_a", "state": True}]}, {"desired": [{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 0}}]}, {"unexpected": 1}, {"trigger": {"type": "entity", "entity_id": "x.y", "value": "on", "operator": []}}]:
             with self.subTest(change=change), self.assertRaises(ValueError):
                 validate_rules([rule(**change)])
         with self.assertRaises(ValueError):
@@ -67,17 +69,17 @@ class ModelTests(unittest.TestCase):
             self.assertEqual(active_action(r, {}, datetime(2026, 10, 12, hour, minute))[0] is not None, active)
 
     def test_unknown_does_not_invert_and_conditions_gate_both(self):
-        r = rule(alternate={"state": "off"}, conditions=[{"entity_id": "switch.manual", "value": "off"}])
+        r = rule(alternate=[{"entity_id": "light.porch_a", "state": "off"}], conditions=[{"entity_id": "switch.manual", "value": "off"}])
         states = {"binary_sensor.night": state("unavailable"), "switch.manual": state("off")}
         self.assertIsNone(active_action(r, states, datetime.now())[0])
         states["binary_sensor.night"] = state("off")
-        self.assertEqual(active_action(r, states, datetime.now())[0], {"state": "off"})
+        self.assertEqual(active_action(r, states, datetime.now())[0], r["alternate"])
         states["switch.manual"] = state("on")
         self.assertIsNone(active_action(r, states, datetime.now())[0])
         r["trigger"]["unknown"] = "match"
         states["switch.manual"] = state("off")
         states["binary_sensor.night"] = state("unknown")
-        self.assertEqual(active_action(r, states, datetime.now())[0], {"state": "on"})
+        self.assertEqual(active_action(r, states, datetime.now())[0], r["desired"])
 
     def test_predicates_numeric_and_tolerance(self):
         states = {"sensor.temp": state("22.1", temperature=22.1)}
@@ -108,26 +110,26 @@ class ModelTests(unittest.TestCase):
         ]
         for entity, current, desired, expected in cases:
             with self.subTest(entity=entity):
-                validate_rules([rule(targets=[entity], desired=desired)])
+                validate_rules([rule(desired=[{"entity_id": entity, **desired}])])
                 self.assertEqual(action_commands(entity, desired, {entity: current}), expected)
 
     def test_custom_requires_satisfied_and_cannot_override_targets(self):
         action = {"service": "light.turn_on", "data": {}, "satisfied": [{"entity_id": "$target", "value": "on"}]}
-        validate_rules([rule(desired=action)])
+        validate_rules([rule(desired=[{"entity_id": "light.porch_a", **action}])])
         self.assertEqual(action_commands("light.porch_a", action, {"light.porch_a": state("on")}), [])
         self.assertEqual(len(action_commands("light.porch_a", action, {"light.porch_a": state("off")})), 1)
         for bad in [{"service": "light.turn_on"}, {**action, "data": {"entity_id": "light.other"}}]:
             with self.assertRaises(ValueError):
-                validate_rules([rule(desired=bad)])
+                validate_rules([rule(desired=[{"entity_id": "light.porch_a", **bad}])])
 
     def test_reevaluation_options_and_satisfied_dependencies(self):
         r = rule(reevaluate={"source": False, "target": False, "condition": False, "interval": 0})
         self.assertFalse(event_affects(r, "binary_sensor.night"))
         self.assertFalse(event_affects(r, "light.porch_a"))
         r["reevaluate"]["condition"] = True
-        r["desired"] = {"service": "light.turn_on", "satisfied": [{"entity_id": "sensor.verify", "value": "ok"}]}
+        r["desired"] = [{"entity_id": "light.porch_a", "service": "light.turn_on", "satisfied": [{"entity_id": "sensor.verify", "value": "ok"}]}]
         self.assertTrue(event_affects(r, "sensor.verify"))
-        r["desired"]["satisfied"] = [{"entity_id": "$target", "value": "on"}]
+        r["desired"][0]["satisfied"] = [{"entity_id": "$target", "value": "on"}]
         self.assertFalse(event_affects(r, "light.porch_a"))
 
 
@@ -167,14 +169,13 @@ class StoreTests(unittest.TestCase):
 
     def test_per_entity_yaml_overrides_and_persistence(self):
         r = rule(desired=[{"entity_id": "light.porch_a"}], alternate=[{"entity_id": "switch.other", "state": "off"}])
-        del r["targets"]
         custom = "service: light.turn_on\nsatisfied:\n  - entity_id: $target\n    value: 'on'\n"
         parsed = parse(json.dumps([r]), {"desired": {"light.porch_a": custom}})
         self.store.save(parsed, self.store.revision)
         reloaded = Store(self.path)
         self.assertEqual(reloaded.rules, parsed)
         self.assertEqual(reloaded.rules[0]["desired"][0]["entity_id"], "light.porch_a")
-        for override in [{"light.missing": custom}, {"light.porch_a": "entity_id: light.other\nstate: 'on'"}, {"light.porch_a": []}]:
+        for override in [custom, {"light.missing": custom}, {"light.porch_a": "entity_id: light.other\nstate: 'on'"}, {"light.porch_a": []}]:
             with self.assertRaises(ValueError):
                 parse(json.dumps([r]), {"desired": override})
 
@@ -202,7 +203,6 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         r = rule(desired=[{"entity_id": "light.porch_a", "state": "on", "data": {"brightness_pct": 30}},
                           {"entity_id": "light.porch_b", "state": "on", "data": {"brightness_pct": 80}}],
                  alternate=[{"entity_id": "switch.other", "state": "off"}])
-        del r["targets"]
         engine = self.make_engine([r])
         engine.ha.states["switch.other"] = state("on")
         await engine.reconcile()
@@ -213,13 +213,13 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         await engine.reconcile()
         self.assertEqual(engine.ha.calls[-1], ("switch.turn_off", "switch.other", {}))
         self.assertEqual(set(engine.pending), {"switch.other"})
-        engine.store.rules.append(rule("higher", 80, targets=["switch.other"], desired={"state": "on"}, alternate={"state": "on"}))
+        engine.store.rules.append(rule("higher", 80, desired=[{"entity_id": "switch.other", "state": "on"}], alternate=[{"entity_id": "switch.other", "state": "on"}]))
         winners, status = engine.winners(datetime.now(engine.ha.zone), time.monotonic())
         self.assertEqual(winners["switch.other"][0]["id"], "higher")
         self.assertIn("Overridden", status["porch"]["targets"]["switch.other"])
 
     async def test_conflict_only_overrides_one_target_and_ties_stable(self):
-        engine = self.make_engine([rule(), rule("special", 80, targets=["light.porch_a"], desired={"state": "off"})])
+        engine = self.make_engine([rule(), rule("special", 80, desired=[{"entity_id": "light.porch_a", "state": "off"}])])
         await engine.reconcile()
         self.assertEqual(engine.ha.calls, [("light.turn_on", "light.porch_b", {})])
         self.assertIn("Overridden", engine.status["porch"]["targets"]["light.porch_a"])
@@ -228,7 +228,7 @@ class EngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(winners["light.porch_a"][0]["id"], "porch")
 
     async def test_cooldown_no_duplicate_and_retry_checks_current_state(self):
-        engine = self.make_engine([rule(desired={"state": "on", "data": {"transition": 30}})])
+        engine = self.make_engine([rule(desired=[{"entity_id": entity, "state": "on", "data": {"transition": 30}} for entity in ("light.porch_a", "light.porch_b")])])
         await engine.reconcile()
         engine.changed("light.porch_a")
         await engine.reconcile()
@@ -358,7 +358,6 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_save_per_entity_actions_and_reject_sensor_target(self):
         r = rule(desired=[{"entity_id": "light.porch_a"}, {"entity_id": "light.porch_b", "state": "off"}],
                  alternate=[{"entity_id": "light.porch_b", "state": "on"}])
-        del r["targets"]
         custom = "service: light.turn_on\nsatisfied:\n  - entity_id: $target\n    value: 'on'\n"
         response = await self.post("rule", {"yaml": json.dumps([r]), "actions": {"desired": {"light.porch_a": custom}}, "revision": self.store.revision})
         self.assertEqual(response.status, 200)
@@ -378,9 +377,9 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post("/api/rule", json={})
         self.assertEqual(response.status, 403)
         custom = "service: light.turn_on\ndata: {}\nsatisfied:\n  - entity_id: $target\n    value: 'on'\n"
-        response = await self.post("preview", {"yaml": json.dumps([rule()]), "actions": {"desired": custom}})
+        response = await self.post("preview", {"yaml": json.dumps([rule()]), "actions": {"desired": {"light.porch_a": custom}}})
         self.assertEqual(response.status, 200)
-        self.assertEqual((await response.json())["rule"]["desired"]["service"], "light.turn_on")
+        self.assertEqual((await response.json())["rule"]["desired"][0]["service"], "light.turn_on")
         response = await self.post("rule", {"yaml": "- id: bad", "revision": self.store.revision})
         self.assertEqual(response.status, 400)
 
@@ -413,7 +412,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("disconnected", disconnected["status"]["porch"]["reason"])
 
     async def test_incomplete_draft_preview_does_not_weaken_save_validation(self):
-        draft = rule(name="", targets=[], trigger={"type": "entity", "entity_id": "", "value": "on"},
+        draft = rule(name="", desired=[], trigger={"type": "entity", "entity_id": "", "value": "on"},
                      conditions=[{"entity_id": "", "value": "off"}])
         response = await self.post("preview", {"yaml": json.dumps([draft]), "draft": True})
         self.assertEqual(response.status, 200)

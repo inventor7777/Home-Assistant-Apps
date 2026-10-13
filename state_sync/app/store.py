@@ -22,21 +22,18 @@ def parse(text, actions=None, validate=True, draft=False):
             require(isinstance(actions, dict) and not (actions.keys() - {"desired", "alternate"}), "Invalid action overrides")
             require(len(value) == 1 and isinstance(value[0], dict), "Action overrides need exactly one sync")
             for key, action in actions.items():
-                if isinstance(action, str):
-                    value[0][key] = yaml.safe_load(action)
-                else:
-                    require(isinstance(action, dict) and isinstance(value[0].get(key), list), "Invalid entity action overrides")
-                    entries = value[0][key]
-                    require(all(isinstance(a, dict) and isinstance(a.get("entity_id"), str) for a in entries), "Invalid entity actions")
-                    require(not (action.keys() - {a.get("entity_id") for a in entries}), "Unknown action target")
-                    for entry in entries:
-                        entity = entry.get("entity_id")
-                        if entity in action:
-                            require(isinstance(action[entity], str), "Action YAML must be text")
-                            parsed = yaml.safe_load(action[entity])
-                            require(isinstance(parsed, dict) and "entity_id" not in parsed, "Custom action cannot override its target")
-                            entry.clear()
-                            entry.update({"entity_id": entity, **parsed})
+                require(isinstance(action, dict) and isinstance(value[0].get(key), list), "Invalid entity action overrides")
+                entries = value[0][key]
+                require(all(isinstance(a, dict) and isinstance(a.get("entity_id"), str) for a in entries), "Invalid entity actions")
+                require(not (action.keys() - {a.get("entity_id") for a in entries}), "Unknown action target")
+                for entry in entries:
+                    entity = entry.get("entity_id")
+                    if entity in action:
+                        require(isinstance(action[entity], str), "Action YAML must be text")
+                        parsed = yaml.safe_load(action[entity])
+                        require(isinstance(parsed, dict) and "entity_id" not in parsed, "Custom action cannot override its target")
+                        entry.clear()
+                        entry.update({"entity_id": entity, **parsed})
         if validate:
             validate_rules(value, draft=draft)
         return value

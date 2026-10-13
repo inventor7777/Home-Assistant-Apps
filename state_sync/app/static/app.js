@@ -39,6 +39,17 @@ function applySnapshot(data) {
   }
 }
 async function refresh() { applySnapshot(await api("snapshot")); }
+function overviewStatus(status) {
+  const targets = Object.values(status.targets);
+  if (status.reason === "Enforcing" || status.reason === "Enforcing alternate") {
+    const alternate = status.reason === "Enforcing alternate";
+    if (targets.length && targets.every(reason => reason === "In sync")) {
+      return [alternate ? "Enforcing alternate" : "In sync", alternate ? "alternate" : "synced"];
+    }
+    return [alternate ? "Alternate · out of sync" : "Out of sync", "error"];
+  }
+  return [status.reason, ["Disabled", "Inactive", "Snoozed"].includes(status.reason) ? "idle" : "error"];
+}
 function renderOverview() {
   const root = $("overview");
   const layout = JSON.stringify(snapshot.rules.map(r => [r.id, r.trigger.type]));
@@ -61,9 +72,11 @@ function renderOverview() {
           catch (e) { i.checked = current().enabled !== false; error("error", e.message); } finally { i.disabled = false; }
         });
         const toggle = enabled.querySelector("input"); toggle.setAttribute("role", "switch"); toggle.className = "switch";
-        head.append(title, enabled); card.append(head);
-        const description = el("p", undefined, "description"), badge = el("span", undefined, "badge"), statuses = el("ul", undefined, "target-status");
-        card.append(description, badge, statuses);
+        const heading = el("div", undefined, "card-heading"), status = el("span", undefined, "card-status");
+        status.setAttribute("role", "status");
+        heading.append(title, status); head.append(heading, enabled); card.append(head);
+        const description = el("p", undefined, "description"), statuses = el("ul", undefined, "target-status");
+        card.append(description, statuses);
         const picker = select([["", "Snooze…"], [300, "5 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [21600, "6 hours"], [43200, "12 hours"], [86400, "24 hours"], [0, "Resume now"]], "");
         picker.addEventListener("change", async () => {
           picker.disabled = true;
@@ -74,7 +87,7 @@ function renderOverview() {
         const remaining = el("span"), foot = el("div", undefined, "card-foot");
         const editButton = button("Edit", edit); foot.append(picker, remaining, editButton);
         card.append(foot); cards.append(card);
-        overviewCards.set(r.id, {title, toggle, description, badge, statuses, picker, remaining, editButton});
+        overviewCards.set(r.id, {title, toggle, description, status, statuses, picker, remaining, editButton});
       }
     }
   }
@@ -84,8 +97,10 @@ function renderOverview() {
     c.toggle.setAttribute("aria-label", `Enable ${r.name}`);
     if (!c.toggle.disabled) c.toggle.checked = r.enabled !== false;
     const when = r.trigger.type === "time" ? `${r.trigger.start} – ${r.trigger.end}` : `${friendly(r.trigger.entity_id)} ${r.trigger.operator || "eq"} ${JSON.stringify(r.trigger.value)}`;
-    c.description.textContent = `${when} → ${[...new Set([...stateEntries(r, "desired"), ...stateEntries(r, "alternate")].map(a => a.entity_id))].map(friendly).join(", ")}`;
-    c.badge.textContent = s.reason;
+    c.description.textContent = `${when} → ${[...new Set([...r.desired, ...(r.alternate || [])].map(a => a.entity_id))].map(friendly).join(", ")}`;
+    const [text, tone] = overviewStatus(s);
+    c.status.textContent = text;
+    c.status.className = `card-status ${tone}`;
     c.statuses.replaceChildren(...Object.entries(s.targets).map(([entity, reason]) => el("li", `${friendly(entity)}: ${reason}`)));
     c.picker.setAttribute("aria-label", `Snooze ${r.name}`);
     c.remaining.textContent = s.snooze_seconds > 0 ? `${Math.ceil(s.snooze_seconds / 60)}m left` : "";
@@ -231,10 +246,6 @@ function renderAction(root, action = {}, domain = "light") {
     return {action: {...(state ? {state: state.value} : {}), data}};
   };
 }
-function stateEntries(rule, key) {
-  const action = rule[key];
-  return Array.isArray(action) ? action : action ? (rule.targets || []).map(entity_id => ({entity_id, ...action})) : [];
-}
 function actionRow(entry) {
   const {entity_id = "", ...action} = entry;
   const row = el("div", undefined, "target-action"), head = el("div", undefined, "target-action-head");
@@ -247,7 +258,7 @@ function actionRow(entry) {
   return row;
 }
 function populateState(rule, key) {
-  const root = $(key); root.replaceChildren(...stateEntries(rule, key).map(actionRow));
+  const root = $(key); root.replaceChildren(...(rule[key] || []).map(actionRow));
   const ids = new Set();
   $(`add-${key}`).replaceChildren(entityPicker(ids, () => {
     const entity_id = [...ids][0];
@@ -271,7 +282,7 @@ function populate(rule) {
   $("start").value = rule.trigger.start || "21:00"; $("end").value = rule.trigger.end || "01:00"; updateType();
   $("conditions").replaceChildren(...(rule.conditions || []).map(p => predicateRow(p, true)));
   populateState(rule, "desired"); populateState(rule, "alternate");
-  $("inverted").checked = !!rule.alternate; $("alternate-box").hidden = !rule.alternate;
+  $("inverted").checked = !!rule.alternate; updateAlternate();
   for (const k of ["source", "target", "condition"]) $(`on-${k}`).checked = rule.reevaluate?.[k] !== false;
   $("on-interval").checked = (rule.reevaluate?.interval ?? 60) > 0; $("interval").value = rule.reevaluate?.interval || 60; $("interval").disabled = !$("on-interval").checked;
   $("sync-options").open = false;
@@ -286,6 +297,10 @@ function readForm() {
   return {yaml: JSON.stringify([rule]), actions};
 }
 function updateType() { $("source").hidden = $("type").value !== "entity"; $("times").hidden = !$("source").hidden; $("time-hint").hidden = $("times").hidden; }
+function updateAlternate() {
+  $("alternate-box").hidden = !$("inverted").checked;
+  $("alternate-section").classList.toggle("collapsed", !$("inverted").checked);
+}
 function setMode(raw) {
   rawMode = raw; $("fields").hidden = raw; $("yaml-box").hidden = !raw;
   $("mode-toggle").textContent = raw ? "Form" : "YAML";
@@ -301,7 +316,7 @@ async function openEditor(rule = null) {
   editing = rule; error("edit-error", ""); $("editor-verb").textContent = rule ? "Edit" : "New"; $("delete").hidden = !rule;
   editRevision = snapshot.revision; $("form").dataset.newId = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, "0")).join("");
   populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, desired: []});
-  setMode(false); $("editor").showModal();
+  setMode(false); $("editor").showModal(); $("close").focus({preventScroll: true});
   try {
     entities = await api("entities");
   } catch (e) { error("edit-error", e.message); }
@@ -330,7 +345,7 @@ $("delete").addEventListener("click", async () => {
 $("new").addEventListener("click", () => openEditor()); $("close").addEventListener("click", () => $("editor").close());
 $("type").addEventListener("change", updateType);
 $("add-condition").addEventListener("click", () => $("conditions").append(predicateRow(undefined, true)));
-$("inverted").addEventListener("change", () => $("alternate-box").hidden = !$("inverted").checked);
+$("inverted").addEventListener("change", updateAlternate);
 $("on-interval").addEventListener("change", () => $("interval").disabled = !$("on-interval").checked);
 inheritTheme();
 connectionState(false);

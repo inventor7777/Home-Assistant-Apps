@@ -101,14 +101,12 @@ def validate_action(action, targets):
         require(data["target_temp_low"] <= data["target_temp_high"], "Low temperature exceeds high")
 
 
-def action_targets(rule, action):
-    if isinstance(action, list):
-        return [(a["entity_id"], {k: v for k, v in a.items() if k != "entity_id"}) for a in action]
-    return [(entity, action) for entity in rule.get("targets", [])] if action else []
+def action_targets(actions):
+    return [(a["entity_id"], {k: v for k, v in a.items() if k != "entity_id"}) for a in actions]
 
 
 def target_entities(rule):
-    return {entity for key in ("desired", "alternate") for entity, _ in action_targets(rule, rule.get(key))}
+    return {entity for key in ("desired", "alternate") for entity, _ in action_targets(rule.get(key, []))}
 
 
 def validate_target_actions(actions, draft=False):
@@ -133,7 +131,7 @@ def _validate_rules(rules, draft=False):
         raise ValueError("Syncs must contain finite JSON-compatible values") from exc
     ids = set()
     for r in rules:
-        mapping(r, {"id", "name", "enabled", "priority", "trigger", "conditions", "targets", "desired", "alternate", "reevaluate"}, "sync")
+        mapping(r, {"id", "name", "enabled", "priority", "trigger", "conditions", "desired", "alternate", "reevaluate"}, "sync")
         require(isinstance(r.get("id"), str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", r["id"]), "Invalid sync ID")
         require(r["id"] not in ids, "Duplicate sync ID")
         ids.add(r["id"])
@@ -154,20 +152,9 @@ def _validate_rules(rules, draft=False):
         require(isinstance(conditions, list), "Conditions must be a list")
         for p in conditions:
             validate_predicate(p, draft=draft)
-        if isinstance(r.get("desired"), list):
-            require("targets" not in r, "Per-entity states contain their own targets")
-            validate_target_actions(r["desired"], draft)
-            if "alternate" in r:
-                validate_target_actions(r["alternate"], draft)
-        else:
-            # Keep existing shared-action files readable without rewriting them.
-            targets = r.get("targets")
-            require(isinstance(targets, list) and (draft or targets) and len(targets) <= 100, "Choose 1–100 targets")
-            require(all(isinstance(e, str) and ENTITY.fullmatch(e) for e in targets), "Invalid target entity ID")
-            require(len(set(targets)) == len(targets), "Duplicate targets")
-            validate_action(r.get("desired"), targets)
-            if "alternate" in r:
-                validate_action(r["alternate"], targets)
+        validate_target_actions(r.get("desired"), draft)
+        if "alternate" in r:
+            validate_target_actions(r["alternate"], draft)
         opts = r.get("reevaluate", {})
         mapping(opts, {"source", "target", "condition", "interval"}, "reevaluate")
         for key in {"source", "target", "condition"}:
@@ -305,7 +292,7 @@ def event_affects(rule, entity):
         or opts.get("condition", True) and any(
             p["entity_id"] != "$target" and entity == p["entity_id"] and entity not in targets
             for key in ("desired", "alternate")
-            for _, a in action_targets(rule, rule.get(key))
+            for _, a in action_targets(rule.get(key, []))
             for p in a.get("satisfied", [])
         )
     )
