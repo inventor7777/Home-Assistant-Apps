@@ -6,6 +6,8 @@ main { max-width: 1200px; padding: 28px; margin: auto; }
 header, .dialog-head, .section-head, .card-head, .dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 main > header { flex-wrap: wrap; }
 .header-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.header-actions button, .card-foot button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; line-height: 1.5; padding: 9px 15px; }
+.button-icon { display: block; width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 h1 { font-size: 28px; margin: 0; font-weight: 650; }
 h2 { margin: 0; font-size: 20px; font-weight: 600; }
 h3 { margin: 0 0 20px; font-size: 22px; font-weight: 650; }
@@ -23,7 +25,7 @@ p { margin: 8px 0; }
 .description { color: var(--muted); min-height: 44px; margin: 12px 0; font-size: 13px; }
 .card-heading { flex: 1; min-width: 0; }
 .card-status { display: block; font-size: 12px; font-weight: 600; }
-button.card-status { padding: 7px 10px; background: var(--soft); color: var(--text); }
+button.card-status { background: var(--soft); color: var(--text); }
 button.card-status:not(.idle) { background: color-mix(in srgb, currentColor 8%, var(--surface)); }
 .card-status.synced { color: light-dark(#16803c, #6bce8b); }
 .card-status.alternate { color: light-dark(#2563eb, #93b4ff); }
@@ -90,6 +92,7 @@ dialog::backdrop { background: #0009; }
 .details-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .details-head h2 { min-width: 0; overflow-wrap: anywhere; }
 #details-body { overflow-y: auto; min-height: 0; padding: 12px 20px 20px; overflow-wrap: anywhere; }
+#details-body h4 { font-size: 18px; margin: 24px 0 12px; }
 .details-targets { padding-left: 18px; }
 .details-targets li { margin-bottom: 16px; }
 .details-targets pre { white-space: pre-wrap; font-size: 12px; margin: 8px 0; }

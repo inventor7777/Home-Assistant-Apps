@@ -25,6 +25,7 @@ const nodes = new Map();
 const document = {
   getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Element("div")); return nodes.get(id); },
   createElement: tag => new Element(tag), documentElement: new Element("html"),
+  createElementNS: (namespace, tag) => new Element(tag),
 };
 const parentRoot = new Element("html"), host = {hass: {themes: {darkMode: true}}};
 let themeChanged, observed;
@@ -53,6 +54,9 @@ assert.equal(card.picker.parent.className, "card-controls");
 assert.equal(card.picker.parent.children[1].children[0], card.toggle);
 assert.equal(card.status.parent.className, "card-foot");
 assert.equal(card.status.parent.children.at(-1), card.editButton);
+assert.equal(card.editButton.children[0].tag, "svg");
+assert.equal(card.editButton.children[0].attributes["aria-hidden"], "true");
+assert.equal(card.editButton.children[1].textContent, "Edit");
 document.activeElement = card.picker; card.picker.value = "300";
 vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Snoozed", snooze_seconds: 300, targets: {}}}})`, context);
 assert.equal(vm.runInContext('overviewCards.get("porch")', context), card);
@@ -71,7 +75,12 @@ assert.equal(card.status.attributes["aria-haspopup"], "dialog");
 card.status.listeners.click();
 assert.equal(nodes.get("sync-details").open, true);
 assert.equal(nodes.get("details-title").textContent, "Porch");
-assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].textContent, "In sync");
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].tag, "strong");
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[1].textContent, "In sync");
+assert.equal(nodes.get("details-body").querySelectorAll("pre")[0].hidden, true);
+nodes.get("details-json").listeners.click();
+assert.equal(nodes.get("details-json").textContent, "Hide JSON");
+assert.equal(nodes.get("details-body").querySelectorAll("pre")[0].hidden, false);
 assert.equal(card.remaining.hidden, true);
 vm.runInContext("stream.onerror()", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, true);
@@ -85,7 +94,11 @@ for (const [reason, target, tone] of [["Enforcing alternate", "In sync", "altern
   vm.runInContext("applySnapshot({...snapshot, status: {porch: liveStatus}})", context);
   assert.equal(card.status.className, `card-status ${tone}`);
 }
-assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].textContent, "Overridden by other sync");
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[1].textContent, "Overridden by other sync");
+assert.equal(nodes.get("details-body").querySelectorAll("pre")[0].hidden, false);
+nodes.get("details-json").listeners.click();
+assert.equal(nodes.get("details-json").textContent, "Show JSON");
+assert.equal(nodes.get("details-body").querySelectorAll("pre")[0].hidden, true);
 vm.runInContext(`
   applySnapshot({...snapshot, rules: [{...snapshot.rules[0],
     conditions: [{entity_id: "binary_sensor.night", value: "on"}],
@@ -97,7 +110,9 @@ vm.runInContext(`applySnapshot({...snapshot, rules: [{...snapshot.rules[0],
   desired: [...snapshot.rules[0].desired, {entity_id: "light.target_5", state: "on"}]}]})`, context);
 assert.ok(card.description.textContent.endsWith("6 targets"));
 assert.equal(nodes.get("details-body").querySelectorAll("li").length, 8);
-assert.ok(nodes.get("details-body").querySelectorAll("li")[0].textContent.includes("binary_sensor.night"));
+assert.ok(nodes.get("details-body").querySelectorAll("li")[0].children[0].textContent.includes("binary_sensor.night"));
+assert.equal(nodes.get("details-body").querySelectorAll("li")[0].children[0].tag, "strong");
+assert.ok(nodes.get("details-body").querySelectorAll("pre").every(json => json.hidden));
 nodes.get("details-close").listeners.click();
 assert.equal(nodes.get("sync-details").open, false);
 

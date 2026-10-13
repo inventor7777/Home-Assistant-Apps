@@ -8,13 +8,16 @@
 </head>
 <body>
   <main>
-    <header><h1 id="app-title">State Sync</h1><div class="header-actions"><button id="resync" class="quiet"><span aria-hidden="true">⟳</span> Resync All</button><button id="new">+ New Sync</button></div></header>
+    <header><h1 id="app-title">State Sync</h1><div class="header-actions">
+      <button id="resync" class="quiet"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7a8 8 0 0 0-14-2L3 8M3 3v5h5M4 17a8 8 0 0 0 14 2l3-3M16 16h5v5"/></svg><span>Resync All</span></button>
+      <button id="new"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New Sync</span></button>
+    </div></header>
     <p id="error" class="error" role="alert" hidden></p>
     <div id="overview"></div>
   </main>
   <dialog id="sync-details" class="status-popup" aria-labelledby="details-title">
     <div class="details-layout">
-      <div class="details-head"><h2 id="details-title"></h2><button type="button" id="details-close" class="quiet" aria-label="Close status details" autofocus>✕</button></div>
+      <div class="details-head"><h2 id="details-title"></h2><div class="editor-controls"><button type="button" id="details-json" class="quiet" aria-pressed="false">Show JSON</button><button type="button" id="details-close" class="quiet" aria-label="Close status details" autofocus>✕</button></div></div>
       <div id="details-body"></div>
     </div>
   </dialog>
