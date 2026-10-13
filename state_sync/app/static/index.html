@@ -15,13 +15,14 @@
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="form">
       <div class="editor-top">
-        <div class="dialog-head"><h2 id="editor-title">New Sync</h2><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
-        <div class="editor-tabs"><button type="button" id="guided" class="quiet" aria-pressed="true">Form</button><button type="button" id="raw" class="quiet" aria-pressed="false">YAML</button></div>
+        <div class="dialog-head">
+          <h2 id="editor-title"><span id="editor-verb">New</span><input id="name" aria-label="Sync name" required maxlength="200" placeholder="Sync"></h2>
+          <div class="editor-controls"><button type="button" id="mode-toggle" class="quiet" aria-label="Switch to YAML editor">YAML</button><button type="button" id="close" class="quiet" aria-label="Close editor">✕</button></div>
+        </div>
       </div>
       <div class="editor-content">
         <p id="edit-error" class="error" role="alert" hidden></p>
         <div id="fields">
-          <div class="sync-name"><label>Name<input id="name" required maxlength="200" placeholder="Porch lights at night"></label><label class="check"><input id="enabled" type="checkbox" checked> Enabled</label></div>
           <section class="editor-section" aria-labelledby="trigger-title">
             <h3 id="trigger-title">Triggers <small>When to enforce</small></h3>
             <label>Sync type<select id="type"><option value="entity">Entity state</option><option value="time">Time window</option></select></label>
@@ -31,12 +32,12 @@
           </section>
           <section class="editor-section" aria-labelledby="condition-title">
             <h3 id="condition-title">Conditions <small>Optional · all must match</small></h3>
-            <div id="conditions"></div><button type="button" id="add-condition" class="quiet">+ Add condition</button>
+            <div id="conditions"></div><button type="button" id="add-condition">+ Add condition</button>
           </section>
           <section class="editor-section" aria-labelledby="action-title">
-            <h3 id="action-title">Actions <small>Maintain the desired state</small></h3>
+            <h3 id="action-title">Actions</h3>
             <h4>Target entities</h4><div id="targets"></div>
-            <h4>Desired state</h4><div id="desired"></div>
+            <div id="desired"></div>
             <label class="check alternate-toggle"><input id="inverted" type="checkbox"> Set an alternate state when the trigger doesn’t match</label>
             <div id="alternate-box" hidden><h4>Alternate state</h4><div id="alternate"></div><p class="hint">Conditions still apply.</p></div>
           </section>
@@ -50,7 +51,7 @@
         </div>
         <div id="yaml-box" hidden><label>Sync YAML<textarea id="yaml" rows="28" spellcheck="false"></textarea></label><p class="hint">One sync in a YAML list. Custom services need satisfied predicates.</p></div>
       </div>
-      <div class="dialog-actions"><button type="button" id="delete" class="danger" hidden>Delete sync</button><button type="submit">Save sync</button></div>
+      <div class="dialog-actions"><label class="check"><input id="enabled" type="checkbox" role="switch" class="switch" checked> Enabled</label><button type="button" id="delete" class="danger" hidden>Delete sync</button><button type="submit">Save sync</button></div>
     </form>
   </dialog>
 </body>

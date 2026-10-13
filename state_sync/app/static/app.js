@@ -122,7 +122,7 @@ function entityPicker(ids, changed, multiple = false) {
   const panel = el("div", undefined, "entity-search"); panel.hidden = true;
   const search = input("search"); search.placeholder = "Search name or entity ID"; search.autocomplete = "off";
   const results = el("div", undefined, "picker");
-  const add = button("+ Add entity", () => { panel.hidden = false; add.hidden = true; search.focus(); });
+  const add = button("+ Add entity", () => { panel.hidden = false; add.hidden = true; search.focus(); }, "");
   add.setAttribute("aria-expanded", "false");
   const close = () => { panel.hidden = true; add.hidden = false; search.value = ""; add.setAttribute("aria-expanded", "false"); add.focus(); };
   const render = () => {
@@ -195,7 +195,8 @@ const configs = {
 function renderAction(id, action = {}) {
   const root = $(id); root.replaceChildren(); const config = configs[actionDomain];
   const mode = select([["basic", "Desired state"], ["custom", "Custom YAML service call"]], action.service || !config ? "custom" : "basic");
-  root.append(label("Action mode", mode)); const basic = el("div", undefined, "action-fields"), custom = el("div", undefined, "action-fields"); root.append(basic, custom);
+  mode.setAttribute("aria-label", id === "desired" ? "Action format" : "Alternate action format");
+  root.append(mode); const basic = el("div", undefined, "action-fields"), custom = el("div", undefined, "action-fields"); root.append(basic, custom);
   let state, reads = [];
   if (config) {
     if (config.states.length) { state = select(config.states.map(x => [x, x]), action.state || config.states[0]); basic.append(label("State", state)); }
@@ -218,7 +219,7 @@ function renderAction(id, action = {}) {
     }
     const showFields = () => { for (const wrap of grid.children) wrap.hidden = state?.value === "off" && wrap.dataset.key !== "transition"; };
     state?.addEventListener("change", showFields); showFields();
-  } else basic.append(el("p", "Use a custom service for this domain.", "hint"));
+  }
   const yaml = el("textarea"); yaml.rows = 12; yaml.spellcheck = false;
   yaml.value = JSON.stringify(action.service ? action : {service: `${actionDomain}.turn_on`, data: {}, satisfied: [{entity_id: "$target", value: "on"}]}, null, 2);
   custom.append(label("YAML · service, data, satisfied", yaml), el("p", "The service is called separately for each winning target. $target refers to that entity in satisfied predicates. Data cannot override targets.", "hint"));
@@ -262,14 +263,17 @@ function readForm() {
 function updateType() { $("source").hidden = $("type").value !== "entity"; $("times").hidden = !$("source").hidden; $("time-hint").hidden = $("times").hidden; }
 function setMode(raw) {
   rawMode = raw; $("fields").hidden = raw; $("yaml-box").hidden = !raw;
-  $("raw").setAttribute("aria-pressed", String(raw)); $("guided").setAttribute("aria-pressed", String(!raw));
+  $("mode-toggle").textContent = raw ? "Form" : "YAML";
+  $("mode-toggle").setAttribute("aria-label", raw ? "Switch to form editor" : "Switch to YAML editor");
   $("name").required = !raw; $("priority").required = !raw;
+  $("name").disabled = raw; $("enabled").disabled = raw;
+  $("name").title = $("enabled").title = raw ? "Edit this value in YAML" : "";
   // Hidden form controls must not block YAML edits through browser validation.
   for (const n of $("fields").querySelectorAll("input,select,textarea")) n.disabled = raw;
   if (!raw) $("interval").disabled = !$("on-interval").checked;
 }
 async function openEditor(rule = null) {
-  editing = rule; error("edit-error", ""); $("editor-title").textContent = rule ? "Edit Sync" : "New Sync"; $("delete").hidden = !rule;
+  editing = rule; error("edit-error", ""); $("editor-verb").textContent = rule ? "Edit" : "New"; $("delete").hidden = !rule;
   editRevision = snapshot.revision; $("form").dataset.newId = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, "0")).join("");
   populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
   setMode(false); $("editor").showModal();
@@ -277,15 +281,17 @@ async function openEditor(rule = null) {
     entities = await api("entities");
   } catch (e) { error("edit-error", e.message); }
 }
-$("raw").addEventListener("click", async () => {
-  if (rawMode) return;
-  try { const result = await api("preview", {...readForm(), validate: false}); $("yaml").value = result.yaml; setMode(true); error("edit-error", ""); }
-  catch (e) { error("edit-error", e.message); }
-});
-$("guided").addEventListener("click", async () => {
-  if (!rawMode) return;
-  try { const result = await api("preview", {yaml: $("yaml").value, draft: true}); populate(result.rule); setMode(false); error("edit-error", ""); }
-  catch (e) { error("edit-error", e.message); }
+$("mode-toggle").addEventListener("click", async () => {
+  const toggle = $("mode-toggle"); toggle.disabled = true;
+  try {
+    if (rawMode) {
+      const result = await api("preview", {yaml: $("yaml").value, draft: true}); populate(result.rule); setMode(false);
+    } else {
+      const result = await api("preview", {...readForm(), validate: false}); $("yaml").value = result.yaml; setMode(true);
+    }
+    error("edit-error", "");
+  } catch (e) { error("edit-error", e.message); }
+  finally { toggle.disabled = false; }
 });
 $("form").addEventListener("submit", async e => {
   e.preventDefault(); const b = e.submitter; b.disabled = true;

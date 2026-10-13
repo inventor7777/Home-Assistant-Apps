@@ -5,7 +5,7 @@ const vm = require("node:vm");
 // A tiny DOM substitute checks live updates without opening a browser.
 class Element {
   constructor(tag) {
-    this.tag = tag; this.children = []; this.attributes = {}; this.listeners = {};
+    this.tag = tag; this.children = []; this.attributes = {}; this.listeners = {}; this.dataset = {};
     this.style = {setProperty: (key, value) => { this.style[key] = value; }, removeProperty: key => { delete this.style[key]; }};
     this.classList = {toggle: (key, value) => { this.attributes[key] = value; }};
   }
@@ -14,6 +14,8 @@ class Element {
   addEventListener(type, callback) { this.listeners[type] = callback; }
   setAttribute(key, value) { this.attributes[key] = value; }
   querySelector(tag) { return this.children.find(child => child.tag === tag); }
+  querySelectorAll(tags) { return this.children.flatMap(child => [...(tags.split(",").includes(child.tag) ? [child] : []), ...child.querySelectorAll(tags)]); }
+  get firstChild() { return this.children[0]; }
 }
 const nodes = new Map();
 const document = {
@@ -57,4 +59,40 @@ vm.runInContext("stream.onerror()", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, true);
 vm.runInContext("applySnapshot(snapshot)", context);
 assert.equal(nodes.get("app-title").attributes.disconnected, false);
-console.log("UI update and HA theme checks passed");
+
+// Moving name/enabled outside #fields must preserve draft round trips and validation.
+context.fetch = async (path, options) => {
+  assert.equal(path, "api/preview");
+  const body = JSON.parse(options.body), rule = JSON.parse(body.yaml)[0];
+  return {ok: true, json: async () => ({rule, yaml: JSON.stringify([rule])})};
+};
+vm.runInContext(`
+  $("form").dataset.newId = "draft";
+  populate({name: "", enabled: false, trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
+  setMode(false);
+`, context);
+assert.equal(nodes.get("name").required, true);
+assert.equal(nodes.get("enabled").disabled, false);
+assert.equal(nodes.get("mode-toggle").textContent, "YAML");
+(async () => {
+  await nodes.get("mode-toggle").listeners.click();
+  assert.equal(nodes.get("mode-toggle").textContent, "Form");
+  assert.equal(nodes.get("name").required, false);
+  assert.equal(nodes.get("enabled").disabled, true);
+  assert.equal(JSON.parse(nodes.get("yaml").value)[0].enabled, false);
+  const draft = JSON.parse(nodes.get("yaml").value);
+  draft[0].name = "Porch Light Night"; draft[0].enabled = true;
+  nodes.get("yaml").value = JSON.stringify(draft);
+  await nodes.get("mode-toggle").listeners.click();
+  assert.equal(nodes.get("name").value, "Porch Light Night");
+  assert.equal(nodes.get("enabled").checked, true);
+  assert.equal(nodes.get("name").required, true);
+  assert.equal(nodes.get("name").disabled, false);
+  assert.equal(nodes.get("mode-toggle").textContent, "YAML");
+  context.fetch = async () => ({ok: false, json: async () => ({error: "Invalid YAML"})});
+  await nodes.get("mode-toggle").listeners.click();
+  assert.equal(nodes.get("mode-toggle").textContent, "YAML");
+  assert.equal(nodes.get("mode-toggle").disabled, false);
+  assert.equal(nodes.get("edit-error").textContent, "Invalid YAML");
+  console.log("UI updates, HA theme, and editor mode checks passed");
+})().catch(error => { console.error(error); process.exitCode = 1; });
