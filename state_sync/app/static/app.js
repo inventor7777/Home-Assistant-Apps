@@ -74,7 +74,7 @@ function renderOverview() {
         const toggle = enabled.querySelector("input"); toggle.setAttribute("role", "switch"); toggle.className = "switch";
         const heading = el("div", undefined, "card-heading"), status = el("span", undefined, "card-status");
         status.setAttribute("role", "status");
-        heading.append(title, status); head.append(heading, enabled); card.append(head);
+        heading.append(title); head.append(heading); card.append(head);
         const description = el("p", undefined, "description"), statuses = el("ul", undefined, "target-status");
         card.append(description, statuses);
         const picker = select([["", "Snooze…"], [300, "5 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [21600, "6 hours"], [43200, "12 hours"], [86400, "24 hours"], [0, "Resume now"]], "");
@@ -84,8 +84,9 @@ function renderOverview() {
           catch (e) { error("error", e.message); }
           finally { picker.value = ""; picker.disabled = false; }
         });
+        const controls = el("div", undefined, "card-controls"); controls.append(picker, enabled); head.append(controls);
         const remaining = el("span"), foot = el("div", undefined, "card-foot");
-        const editButton = button("Edit", edit); foot.append(picker, remaining, editButton);
+        const editButton = button("Edit", edit); foot.append(status, remaining, editButton);
         card.append(foot); cards.append(card);
         overviewCards.set(r.id, {title, toggle, description, status, statuses, picker, remaining, editButton});
       }

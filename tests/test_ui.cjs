@@ -48,6 +48,10 @@ vm.runInContext(`
     status: {porch: {reason: "Active", targets: {"light.porch": "Command sent"}}}});
 `, context);
 const card = vm.runInContext('overviewCards.get("porch")', context);
+assert.equal(card.picker.parent.className, "card-controls");
+assert.equal(card.picker.parent.children[1].children[0], card.toggle);
+assert.equal(card.status.parent.className, "card-foot");
+assert.equal(card.status.parent.children.at(-1), card.editButton);
 document.activeElement = card.picker; card.picker.value = "300";
 vm.runInContext(`applySnapshot({...snapshot, status: {porch: {reason: "Snoozed", snooze_seconds: 300, targets: {}}}})`, context);
 assert.equal(vm.runInContext('overviewCards.get("porch")', context), card);
