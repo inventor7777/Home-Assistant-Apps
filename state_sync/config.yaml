@@ -1,5 +1,5 @@
 name: State Sync
-version: "0.1.1"
+version: "0.1.2"
 slug: state_sync
 description: Maintain desired entity states with simple entity and time syncs
 url: https://github.com/inventor7777/State-Sync-HA

@@ -115,7 +115,7 @@ def create_app(store, options, api, token, development=False):
     async def preview(request):
         body = await request.json()
         require(isinstance(body, dict) and isinstance(body.get("yaml"), str), "Expected YAML text")
-        rules = parse(body["yaml"], body.get("actions"), validate=body.get("validate") is not False)
+        rules = parse(body["yaml"], body.get("actions"), validate=body.get("validate") is not False, draft=body.get("draft") is True)
         require(len(rules) == 1 and isinstance(rules[0], dict), "Preview accepts one sync")
         return web.json_response({"rule": rules[0], "yaml": yaml.safe_dump(rules, sort_keys=False)})
 

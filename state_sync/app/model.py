@@ -39,10 +39,10 @@ def clock(value):
     return time.fromisoformat(value)
 
 
-def validate_predicate(p, target=False):
+def validate_predicate(p, target=False, draft=False):
     mapping(p, {"entity_id", "attribute", "operator", "value", "unknown", "tolerance"}, "predicate")
     entity = p.get("entity_id", "")
-    require(isinstance(entity, str) and (ENTITY.fullmatch(entity) or target and entity == "$target"), "Invalid predicate entity_id")
+    require(isinstance(entity, str) and (ENTITY.fullmatch(entity) or target and entity == "$target" or draft and entity == ""), "Invalid predicate entity_id")
     require(p.get("operator", "eq") in {"eq", "ne", "gt", "lt", "ge", "le"}, "Invalid operator")
     require("value" in p and isinstance(p["value"], (str, int, float, bool, list)), "Predicate needs a value")
     require(p.get("unknown", "skip") in {"skip", "match", "no_match"}, "Invalid unknown policy")
@@ -101,7 +101,7 @@ def validate_action(action, targets):
         require(data["target_temp_low"] <= data["target_temp_high"], "Low temperature exceeds high")
 
 
-def _validate_rules(rules):
+def _validate_rules(rules, draft=False):
     require(isinstance(rules, list) and len(rules) <= 500, "Syncs must be a list (maximum 500)")
     # JSON compatibility also rejects recursive YAML aliases and nonfinite values.
     try:
@@ -114,14 +114,15 @@ def _validate_rules(rules):
         require(isinstance(r.get("id"), str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", r["id"]), "Invalid sync ID")
         require(r["id"] not in ids, "Duplicate sync ID")
         ids.add(r["id"])
-        require(isinstance(r.get("name"), str) and 0 < len(r["name"]) <= 200, "Sync needs a name")
+        name = r.get("name", "") if draft else r.get("name")
+        require(isinstance(name, str) and (draft or len(name) > 0) and len(name) <= 200, "Sync needs a name")
         require(type(r.get("enabled", True)) is bool, "Enabled must be boolean")
         require(type(r.get("priority", 50)) is int and 0 <= r.get("priority", 50) <= 100, "Priority must be 0–100")
         t = r.get("trigger")
         require(isinstance(t, dict), "Sync needs a trigger")
         if t.get("type") == "entity":
             mapping(t, {"type", "entity_id", "attribute", "operator", "value", "unknown", "tolerance"}, "entity trigger")
-            validate_predicate({k: v for k, v in t.items() if k != "type"})
+            validate_predicate({k: v for k, v in t.items() if k != "type"}, draft=draft)
         else:
             mapping(t, {"type", "start", "end"}, "time trigger")
             require(t.get("type") == "time", "Trigger type must be entity/time")
@@ -129,9 +130,9 @@ def _validate_rules(rules):
         conditions = r.get("conditions", [])
         require(isinstance(conditions, list), "Conditions must be a list")
         for p in conditions:
-            validate_predicate(p)
+            validate_predicate(p, draft=draft)
         targets = r.get("targets")
-        require(isinstance(targets, list) and targets and len(targets) <= 100, "Choose 1–100 targets")
+        require(isinstance(targets, list) and (draft or targets) and len(targets) <= 100, "Choose 1–100 targets")
         require(all(isinstance(e, str) and ENTITY.fullmatch(e) for e in targets), "Invalid target entity ID")
         require(len(set(targets)) == len(targets), "Duplicate targets")
         validate_action(r.get("desired"), targets)
@@ -145,9 +146,9 @@ def _validate_rules(rules):
     return rules
 
 
-def validate_rules(rules):
+def validate_rules(rules, draft=False):
     try:
-        return _validate_rules(rules)
+        return _validate_rules(rules, draft=draft)
     except (TypeError, KeyError, AttributeError) as exc:
         raise ValueError("Invalid sync field type") from exc
 

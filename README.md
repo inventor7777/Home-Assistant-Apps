@@ -35,6 +35,8 @@ Basic adapters support lights, switches, input booleans, fans, humidifiers, clim
 
 ## Configuration
 
+The form separates Triggers, Conditions, and Actions. Choose **Add entity** and search by name or ID; only up to 30 matching entities appear, with no initial entity list. Target selection supports multiple entities before choosing Done. Predicate details, state attributes, and sync settings are collapsible. The editor header and save controls stay visible while its contents scroll. Unfinished drafts can switch between YAML and Form; saving still requires a complete, valid sync.
+
 One-time options belong in Home Assistant’s app configuration:
 
 ```yaml

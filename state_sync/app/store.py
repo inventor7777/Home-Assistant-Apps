@@ -14,7 +14,7 @@ class Conflict(ValueError):
     pass
 
 
-def parse(text, actions=None, validate=True):
+def parse(text, actions=None, validate=True, draft=False):
     try:
         value = yaml.safe_load(text)
         require(isinstance(value, list), "Syncs must be a YAML list")
@@ -25,7 +25,7 @@ def parse(text, actions=None, validate=True):
                 require(isinstance(action, str), "Action YAML must be text")
                 value[0][key] = yaml.safe_load(action)
         if validate:
-            validate_rules(value)
+            validate_rules(value, draft=draft)
         return value
     except (yaml.YAMLError, RecursionError) as exc:
         raise ValueError("Invalid sync YAML") from exc

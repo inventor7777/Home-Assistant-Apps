@@ -317,6 +317,19 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
         response = await self.post("rule", {"yaml": "- id: bad", "revision": self.store.revision})
         self.assertEqual(response.status, 400)
 
+    async def test_incomplete_draft_preview_does_not_weaken_save_validation(self):
+        draft = rule(name="", targets=[], trigger={"type": "entity", "entity_id": "", "value": "on"},
+                     conditions=[{"entity_id": "", "value": "off"}])
+        response = await self.post("preview", {"yaml": json.dumps([draft]), "draft": True})
+        self.assertEqual(response.status, 200)
+        self.assertEqual((await response.json())["rule"], draft)
+        response = await self.post("rule", {"yaml": json.dumps([draft]), "draft": True, "revision": self.store.revision})
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.store.rules, [])
+        for invalid in [rule(name="", priority=101), rule(name="", trigger={"type": "entity", "entity_id": [], "value": "on"})]:
+            response = await self.post("preview", {"yaml": json.dumps([invalid]), "draft": True})
+            self.assertEqual(response.status, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

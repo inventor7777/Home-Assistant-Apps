@@ -62,21 +62,63 @@ function renderOverview() {
   }
 }
 
+function entityPicker(ids, changed, multiple = false) {
+  const root = el("div", undefined, "entity-picker"), chips = el("div", undefined, "chips");
+  const panel = el("div", undefined, "entity-search"); panel.hidden = true;
+  const search = input("search"); search.placeholder = "Search name or entity ID"; search.autocomplete = "off";
+  const results = el("div", undefined, "picker");
+  const add = button("+ Add entity", () => { panel.hidden = false; add.hidden = true; search.focus(); });
+  add.setAttribute("aria-expanded", "false");
+  const close = () => { panel.hidden = true; add.hidden = false; search.value = ""; add.setAttribute("aria-expanded", "false"); add.focus(); };
+  const render = () => {
+    chips.replaceChildren();
+    for (const id of ids) {
+      const chip = button(`${friendly(id)} ×`, () => { ids.delete(id); render(); changed(); });
+      chip.setAttribute("aria-label", `Remove ${friendly(id)}`); chip.title = id; chips.append(chip);
+    }
+    add.textContent = ids.size && !multiple ? "Change entity" : "+ Add entity";
+  };
+  const find = () => {
+    results.replaceChildren();
+    const q = search.value.trim().toLowerCase();
+    if (q.length < 2) { results.append(el("p", "Type at least 2 characters to search.", "hint")); return; }
+    const matches = entities.filter(e => !ids.has(e.entity_id) && `${e.entity_id} ${e.attributes?.friendly_name || ""}`.toLowerCase().includes(q));
+    for (const e of matches.slice(0, 30)) {
+      const pick = button(friendly(e.entity_id), () => {
+        if (!multiple) ids.clear(); ids.add(e.entity_id); render(); changed();
+        if (multiple) { find(); search.focus(); } else close();
+      }, "entity-result");
+      pick.append(el("small", `${e.entity_id} · ${e.state}`)); results.append(pick);
+    }
+    if (!matches.length) results.append(el("p", "No matching entities.", "hint"));
+    if (matches.length > 30) results.append(el("p", `${matches.length} matches — refine your search.`, "hint"));
+  };
+  search.addEventListener("input", find);
+  search.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } });
+  add.addEventListener("click", () => { add.setAttribute("aria-expanded", "true"); find(); });
+  panel.append(label("Search entities", search), button(multiple ? "Done" : "Cancel", close), results);
+  root.append(chips, add, panel); render();
+  return root;
+}
+
 function predicateRow(p = {entity_id: "", value: "on"}, removable = false) {
   const row = el("div", undefined, "predicate"), grid = el("div", undefined, "grid");
-  const entity = input("text", p.entity_id); entity.setAttribute("list", "entities"); entity.placeholder = "binary_sensor.night_lux";
+  const ids = new Set(p.entity_id ? [p.entity_id] : []);
+  row.append(entityPicker(ids, () => {}));
   const operator = select([["eq", "Equals"], ["ne", "Does not equal"], ["gt", "Greater than"], ["lt", "Less than"], ["ge", "At least"], ["le", "At most"]], p.operator || "eq");
-  grid.append(label("Entity", entity), label("Comparison", operator)); row.append(grid);
-  const values = el("div", undefined, "grid"), value = input("text", typeof p.value === "string" ? p.value : JSON.stringify(p.value));
+  const value = input("text", typeof p.value === "string" ? p.value : JSON.stringify(p.value));
   const kind = select([["text", "Text / state"], ["json", "Number, boolean, or array (JSON)"]], typeof p.value === "string" ? "text" : "json");
-  values.append(label("Expected value", value), label("Value type", kind)); row.append(values);
+  grid.append(label("Comparison", operator), label("Expected value", value)); row.append(grid);
+  const advanced = el("details", undefined, "advanced"); advanced.append(el("summary", "Advanced options"));
+  advanced.open = !!(p.attribute || p.tolerance || p.unknown && p.unknown !== "skip" || typeof p.value !== "string");
+  advanced.append(label("Value type", kind));
   const attribute = input("text", p.attribute || ""), tolerance = input("number", p.tolerance || 0); tolerance.min = 0; tolerance.step = "any";
-  const extra = el("div", undefined, "grid"); extra.append(label("Attribute · optional", attribute), label("Numeric tolerance", tolerance)); row.append(extra);
-  const unknown = select([["skip", "Skip sync"], ["match", "Treat as matching"], ["no_match", "Treat as not matching"]], p.unknown || "skip"); row.append(label("Unknown / unavailable", unknown));
+  const extra = el("div", undefined, "grid"); extra.append(label("Attribute · optional", attribute), label("Numeric tolerance", tolerance)); advanced.append(extra);
+  const unknown = select([["skip", "Skip sync"], ["match", "Treat as matching"], ["no_match", "Treat as not matching"]], p.unknown || "skip"); advanced.append(label("Unknown / unavailable", unknown)); row.append(advanced);
   if (removable) row.append(button("Remove condition", () => row.remove()));
   row.read = () => {
     let expected = kind.value === "json" || !["eq", "ne"].includes(operator.value) ? JSON.parse(value.value) : value.value;
-    const out = {entity_id: entity.value.trim(), operator: operator.value, value: expected, unknown: unknown.value};
+    const out = {entity_id: [...ids][0] || "", operator: operator.value, value: expected, unknown: unknown.value};
     if (attribute.value.trim()) out.attribute = attribute.value.trim();
     if (Number(tolerance.value)) out.tolerance = Number(tolerance.value);
     return out;
@@ -102,7 +144,10 @@ function renderAction(id, action = {}) {
   let state, reads = [];
   if (config) {
     if (config.states.length) { state = select(config.states.map(x => [x, x]), action.state || config.states[0]); basic.append(label("State", state)); }
-    const grid = el("div", undefined, "grid"); basic.append(grid);
+    const attributes = el("details", undefined, "advanced"); attributes.append(el("summary", "State attributes"));
+    attributes.open = Object.keys(action.data || {}).length > 0;
+    const grid = el("div", undefined, "grid"); attributes.append(grid); basic.append(attributes);
+    attributes.hidden = !Object.keys(config.fields).length;
     for (const [key, [name, min, max]] of Object.entries(config.fields)) {
       const color = min === "color", text = min === "text", old = action.data?.[key];
       const initial = color ? (old ? `#${old.map(x => x.toString(16).padStart(2, "0")).join("")}` : "#ffffff") : old ?? "";
@@ -131,27 +176,13 @@ function renderAction(id, action = {}) {
     return {action: {...(state ? {state: state.value} : {}), data}};
   };
 }
-function targetPicker() {
-  const chips = $("selected"); chips.replaceChildren();
-  for (const id of selected) chips.append(button(`${friendly(id)} ×`, () => { selected.delete(id); updateTargets(); }));
-  const root = $("target-results"); root.replaceChildren(); const q = $("target-search").value.toLowerCase();
-  const matches = entities.filter(e => `${e.entity_id} ${e.attributes?.friendly_name || ""}`.toLowerCase().includes(q)).slice(0, 100);
-  for (const e of matches) {
-    const i = input("checkbox"); i.checked = selected.has(e.entity_id);
-    const span = el("span", friendly(e.entity_id)); span.append(el("small", `${e.entity_id} · ${e.state}`));
-    const row = el("label", undefined, "check"); row.append(i, span); root.append(row);
-    i.addEventListener("change", () => { if (i.checked) selected.add(e.entity_id); else selected.delete(e.entity_id); updateTargets(); });
-  }
-  if (!matches.length) root.append(el("p", "No matching entities. YAML can reference entities currently missing from HA.", "hint"));
-}
 function updateTargets() {
   const next = [...selected][0]?.split(".")[0] || "light";
   if (next !== actionDomain) { actionDomain = next; renderAction("desired"); renderAction("alternate", {state: configs[next]?.states.at(-1)}); }
-  targetPicker();
 }
 function populate(rule) {
   if (!editing && rule.id) $("form").dataset.newId = rule.id;
-  $("name").value = rule.name; $("priority").value = rule.priority ?? 50; $("enabled").checked = rule.enabled !== false;
+  $("name").value = rule.name ?? ""; $("priority").value = rule.priority ?? 50; $("enabled").checked = rule.enabled !== false;
   $("type").value = rule.trigger.type; $("source").replaceChildren(predicateRow(rule.trigger.type === "entity" ? rule.trigger : undefined));
   $("start").value = rule.trigger.start || "21:00"; $("end").value = rule.trigger.end || "01:00"; updateType();
   $("conditions").replaceChildren(...(rule.conditions || []).map(p => predicateRow(p, true)));
@@ -160,7 +191,8 @@ function populate(rule) {
   $("inverted").checked = !!rule.alternate; $("alternate-box").hidden = !rule.alternate;
   for (const k of ["source", "target", "condition"]) $(`on-${k}`).checked = rule.reevaluate?.[k] !== false;
   $("on-interval").checked = (rule.reevaluate?.interval ?? 60) > 0; $("interval").value = rule.reevaluate?.interval || 60; $("interval").disabled = !$("on-interval").checked;
-  $("target-search").value = ""; targetPicker();
+  $("targets").replaceChildren(entityPicker(selected, updateTargets, true));
+  $("sync-options").open = false;
 }
 function readForm() {
   const actions = {}, desired = actionReaders.desired();
@@ -172,9 +204,10 @@ function readForm() {
   if ($("inverted").checked) { const alt = actionReaders.alternate(); rule.alternate = alt.action || {}; if (alt.yaml) actions.alternate = alt.yaml; }
   return {yaml: JSON.stringify([rule]), actions};
 }
-function updateType() { $("source").hidden = $("type").value !== "entity"; $("times").hidden = !$("source").hidden; }
+function updateType() { $("source").hidden = $("type").value !== "entity"; $("times").hidden = !$("source").hidden; $("time-hint").hidden = $("times").hidden; }
 function setMode(raw) {
   rawMode = raw; $("fields").hidden = raw; $("yaml-box").hidden = !raw;
+  $("raw").setAttribute("aria-pressed", String(raw)); $("guided").setAttribute("aria-pressed", String(!raw));
   $("name").required = !raw; $("priority").required = !raw;
   // Hidden form controls must not block YAML edits through browser validation.
   for (const n of $("fields").querySelectorAll("input,select,textarea")) n.disabled = raw;
@@ -186,7 +219,7 @@ async function openEditor(rule = null) {
   populate(rule || {name: "", trigger: {type: "entity", entity_id: "", value: "on"}, targets: [], desired: {state: "on"}});
   setMode(false); $("editor").showModal();
   try {
-    entities = await api("entities"); $("entities").replaceChildren(...entities.map(e => { const o = el("option", `${friendly(e.entity_id)} · ${e.state}`); o.value = e.entity_id; return o; })); targetPicker();
+    entities = await api("entities");
   } catch (e) { error("edit-error", e.message); }
 }
 $("raw").addEventListener("click", async () => {
@@ -196,7 +229,7 @@ $("raw").addEventListener("click", async () => {
 });
 $("guided").addEventListener("click", async () => {
   if (!rawMode) return;
-  try { const result = await api("preview", {yaml: $("yaml").value}); populate(result.rule); setMode(false); error("edit-error", ""); }
+  try { const result = await api("preview", {yaml: $("yaml").value, draft: true}); populate(result.rule); setMode(false); error("edit-error", ""); }
   catch (e) { error("edit-error", e.message); }
 });
 $("form").addEventListener("submit", async e => {
@@ -211,7 +244,6 @@ $("delete").addEventListener("click", async () => {
 $("new").addEventListener("click", () => openEditor()); $("close").addEventListener("click", () => $("editor").close());
 $("type").addEventListener("change", updateType);
 $("add-condition").addEventListener("click", () => $("conditions").append(predicateRow(undefined, true)));
-$("target-search").addEventListener("input", targetPicker);
 $("inverted").addEventListener("change", () => $("alternate-box").hidden = !$("inverted").checked);
 $("on-interval").addEventListener("change", () => $("interval").disabled = !$("on-interval").checked);
 async function poll() {
